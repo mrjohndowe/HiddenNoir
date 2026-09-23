@@ -62,7 +62,16 @@ function Connect-Phone {
 
 function Build-ApiPackage {
     Write-Host "Building the standalone API package..."
-    & "$projectRoot\gradlew.bat" :api:installDist
+    Invoke-Gradle :api:installDist
+}
+
+function Invoke-Gradle {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+
+    & "$projectRoot\gradlew.bat" @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Gradle failed with exit code $LASTEXITCODE."
+    }
 }
 
 function Start-ApiWrapper {
@@ -150,16 +159,63 @@ function Show-LiveServerLogs {
     Get-Content -Path $latestLog.FullName -Tail 30 -Wait
 }
 
+function Get-ConnectedDeviceCount {
+    if (-not (Test-Path $adb)) {
+        throw "ADB was not found at $adb"
+    }
+
+    @(& $adb devices) |
+        Where-Object { $_ -match "^\S+\s+device$" } |
+        Measure-Object |
+        Select-Object -ExpandProperty Count
+}
+
 function Install-AndroidApp {
-    Write-Host "Building and installing the debug app with its direct Wi-Fi API URL..."
-    & "$projectRoot\gradlew.bat" :app-android:app:installDebug
+    param(
+        [switch]$Clean,
+        [switch]$UninstallFirst
+    )
+
+    $deviceCount = Get-ConnectedDeviceCount
+    if ($deviceCount -eq 0) {
+        throw "No authorized Android phone was found. Connect the phone, unlock it, and accept the USB debugging prompt."
+    }
+
+    if ($UninstallFirst) {
+        Write-Host "Removing the existing HiddenNoir app from the connected phone..."
+        & $adb uninstall com.hiddennoir.app | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "The app was not installed yet, so installation will continue." -ForegroundColor Yellow
+        }
+    }
+
+    if ($Clean) {
+        Write-Host "Cleaning the Android build..."
+        Invoke-Gradle clean
+    }
+
+    Write-Host "Creating and installing a new debug build with the direct Wi-Fi API URL..."
+    Invoke-Gradle :app-android:app:installDebug --warning-mode all
+
+    $apk = Join-Path $projectRoot "app-android\app\build\outputs\apk\debug\app-debug.apk"
+    if (-not (Test-Path $apk)) {
+        throw "Gradle reported success, but the debug APK was not found at $apk"
+    }
+
+    $installed = @(& $adb shell pm path com.hiddennoir.app) | Select-String -Quiet "package:"
+    if (-not $installed) {
+        throw "The build completed, but HiddenNoir could not be verified as installed on the phone."
+    }
+
+    Write-Host "HiddenNoir was installed and verified on the connected phone." -ForegroundColor Green
+    Write-Host "APK: $apk"
 }
 
 Set-Location $projectRoot
 
 do {
     Clear-Host
-    Write-Host "HiddenNoir Server Wrapper" -ForegroundColor Cyan
+    Write-Host "HiddenNoir Control Center" -ForegroundColor Cyan
     Write-Host ""
     Show-ServerStatus
     Write-Host ""
@@ -168,11 +224,12 @@ do {
     Write-Host "3. Stop the running API"
     Write-Host "4. Configure optional USB ADB reverse tunnel"
     Write-Host "5. Build and install Android app (direct Wi-Fi API)"
-    Write-Host "6. Run API build and tests"
-    Write-Host "7. Check Ollama and API health"
-    Write-Host "8. Stream live API logs in this terminal"
-    Write-Host "9. Open API logs folder"
-    Write-Host "10. Exit"
+    Write-Host "6. Full Android reinstall (uninstall, clean, build, install, verify)"
+    Write-Host "7. Run API build and tests"
+    Write-Host "8. Check Ollama and API health"
+    Write-Host "9. Stream live API logs in this terminal"
+    Write-Host "10. Open API logs folder"
+    Write-Host "11. Exit"
     Write-Host ""
 
     switch (Read-Host "Choose an option") {
@@ -181,16 +238,17 @@ do {
         "3" { Stop-ApiWrapper; Pause-Menu }
         "4" { Connect-Phone; Pause-Menu }
         "5" { Install-AndroidApp; Pause-Menu }
-        "6" {
-            & "$projectRoot\gradlew.bat" :api:compileKotlin :api:test
+        "6" { Install-AndroidApp -Clean -UninstallFirst; Pause-Menu }
+        "7" {
+            Invoke-Gradle :api:compileKotlin :api:test
             Pause-Menu
         }
-        "7" { Test-Ollama; Show-ServerStatus; Pause-Menu }
-        "8" { Show-LiveServerLogs }
-        "9" { Invoke-Item $logDirectory; Pause-Menu }
-        "10" { break }
+        "8" { Test-Ollama; Show-ServerStatus; Pause-Menu }
+        "9" { Show-LiveServerLogs }
+        "10" { Invoke-Item $logDirectory; Pause-Menu }
+        "11" { break }
         default {
-            Write-Host "Choose a number from 1 to 10." -ForegroundColor Yellow
+            Write-Host "Choose a number from 1 to 11." -ForegroundColor Yellow
             Start-Sleep -Seconds 1
         }
     }
