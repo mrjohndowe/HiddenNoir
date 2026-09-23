@@ -14,51 +14,124 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.json.Json
 import org.slf4j.event.Level
 import java.util.UUID
+import kotlin.system.measureTimeMillis
 
-private const val SESSION_TTL_SECONDS = 86400L
+private const val SESSION_TTL_SECONDS = 7L * 24L * 60L * 60L
 
 fun main() {
-    migrateDatabaseFromEnvironment()
+    val databasePath =
+        System.getenv("HIDDENNOIR_DB_PATH")
+            ?: "data/hiddennoir.db"
 
-    val redisHost = System.getenv("REDIS_HOST") ?: "localhost"
-    val redisPort = System.getenv("REDIS_PORT")?.toIntOrNull() ?: 6379
-    val store = RedisSessionStore(redisHost, redisPort)
+    // This development server and Ollama run on the same Windows machine.
+    val ollamaBaseUrl = "http://127.0.0.1:11434"
+    val ollamaModel =
+        System.getenv("OLLAMA_MODEL")
+            ?.takeIf { it.isNotBlank() }
+            ?: "jimscard/adult-film-screenwriter-nsfw:latest"
 
-    Runtime.getRuntime().addShutdownHook(Thread { store.close() })
+    val dailyLimit =
+        System.getenv("DEV_DAILY_LIMIT")
+            ?.toIntOrNull()
+            ?: 100
 
-    val port = System.getenv("API_PORT")?.toIntOrNull() ?: 8080
-    embeddedServer(Netty, port = port, host = "0.0.0.0") {
-        module(store)
+    val database = HiddenNoirDatabase(databasePath)
+
+    val generator =
+        OllamaReplyGenerator(
+            baseUrl = ollamaBaseUrl,
+            model = ollamaModel
+        )
+
+    Runtime.getRuntime().addShutdownHook(
+        Thread {
+            generator.close()
+        }
+    )
+
+    val port =
+        System.getenv("API_PORT")
+            ?.toIntOrNull()
+            ?: 8081
+
+    embeddedServer(
+        factory = Netty,
+        port = port,
+        host = "0.0.0.0"
+    ) {
+        module(
+            database = database,
+            generator = generator,
+            dailyLimit = dailyLimit
+        )
     }.start(wait = true)
 }
 
-fun Application.module(sessionStore: SessionStore = InMemorySessionStore()) {
+fun Application.module(
+    database: HiddenNoirDatabase,
+    generator: OllamaReplyGenerator,
+    dailyLimit: Int = 100
+) {
+    val sessions = SessionService(database)
+
     install(ContentNegotiation) {
-        json(Json {
-            ignoreUnknownKeys = false
-            explicitNulls = false
-        })
+        json(
+            Json {
+                ignoreUnknownKeys = false
+                explicitNulls = false
+            }
+        )
     }
 
     install(CallLogging) {
         level = Level.INFO
-        // Never log request/response bodies for conversation routes.
+        // Never log request or response bodies here.
     }
 
     install(StatusPages) {
+        exception<OllamaUnavailableException> { call, cause ->
+            call.application.environment.log.warn(
+                "Ollama request failed: ${cause.message}"
+            )
+
+            call.respond(
+                HttpStatusCode.ServiceUnavailable,
+                ApiError(
+                    error = "ollama_unavailable",
+                    message = cause.message
+                )
+            )
+        }
+
         exception<Throwable> { call, cause ->
-            environment.log.error("Unhandled request failure", cause)
-            call.respond(HttpStatusCode.InternalServerError, ApiError("internal_error"))
+            call.application.environment.log.error(
+                "Unhandled request failure",
+                cause
+            )
+
+            call.respond(
+                HttpStatusCode.InternalServerError,
+                ApiError("internal_error")
+            )
         }
     }
 
     routing {
         get("/health") {
-            call.respond(HealthResponse("ok"))
+            call.respond(
+                HealthResponse(
+                    status = "ok",
+                    model = generator.model
+                )
+            )
         }
 
         post("/v1/sessions/anonymous") {
-            val token = sessionStore.createSession(SESSION_TTL_SECONDS)
+            val token =
+                sessions.createSession(
+                    ttlSeconds = SESSION_TTL_SECONDS
+                )
+
             call.respond(
                 AnonymousSessionResponse(
                     accessToken = token,
@@ -69,49 +142,108 @@ fun Application.module(sessionStore: SessionStore = InMemorySessionStore()) {
 
         post("/v1/generations") {
             val token = call.bearerToken()
-            if (token == null || !sessionStore.isValid(token)) {
-                call.respond(HttpStatusCode.Unauthorized, ApiError("invalid_session"))
+
+
+            if (token == null || !sessions.isValid(token)) {
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ApiError("invalid_session")
+                )
+                return@post
+            }
+
+            if (database.generationCountToday(token) >= dailyLimit) {
+                call.respond(
+                    HttpStatusCode.TooManyRequests,
+                    ApiError(
+                        error = "daily_limit_reached",
+                        message = "Development daily limit reached."
+                    )
+                )
                 return@post
             }
 
             val request = call.receive<GenerationRequest>()
+            val policy = BasicPolicy.evaluate(request)
 
-            if (request.conversation.isBlank()) {
-                call.respond(HttpStatusCode.BadRequest, ApiError("conversation_required"))
-                return@post
-            }
+            if (!policy.allowed) {
+                database.recordGeneration(
+                    token = token,
+                    mode = request.intensity,
+                    inputCharacterCount = request.conversation.length,
+                    returnedReplyCount = 0,
+                    policyResult = policy.reason ?: "blocked",
+                    modelVersion = generator.model,
+                    latencyMs = 0
+                )
 
-            if (request.intensity == "explicit" && !request.adultAttestation) {
                 call.respond(
                     HttpStatusCode.UnprocessableEntity,
-                    ApiError("adult_attestation_required")
+                    ApiError(
+                        error = "generation_not_allowed",
+                        message = policy.reason
+                    )
                 )
                 return@post
             }
 
-            // Development stub only.
-            // M2/M3: quota -> input safety -> model -> output safety.
-            val replies = List(request.replyCount.coerceIn(3, 5)) { index ->
-                ReplyCandidate(
-                    id = UUID.randomUUID().toString(),
-                    text = "HiddenNoir development reply ${index + 1}",
-                    tone = request.tone,
-                    intensity = request.intensity
+            var replies: List<String> = emptyList()
+
+            call.application.environment.log.info("Calling Ollama generator...")
+
+            val latency =
+                measureTimeMillis {
+                    replies = generator.generate(request)
+                }
+
+            call.application.environment.log.info(
+                "Generator returned ${replies.size} replies."
+            )
+
+            if (replies.isEmpty()) {
+                throw OllamaUnavailableException(
+                    "Ollama returned no usable replies."
                 )
             }
+
+            database.recordGeneration(
+                token = token,
+                mode = request.intensity,
+                inputCharacterCount = request.conversation.length,
+                returnedReplyCount = replies.size,
+                policyResult = "allowed",
+                modelVersion = generator.model,
+                latencyMs = latency
+            )
 
             call.respond(
                 GenerationResponse(
                     generationId = UUID.randomUUID().toString(),
-                    replies = replies
+                    replies = replies.map { text ->
+                        ReplyCandidate(
+                            id = UUID.randomUUID().toString(),
+                            text = text
+                        )
+                    },
+                    model = generator.model
                 )
             )
         }
     }
 }
 
+
 private fun ApplicationCall.bearerToken(): String? {
-    val header = request.headers["Authorization"] ?: return null
-    if (!header.startsWith("Bearer ", ignoreCase = true)) return null
-    return header.substringAfter("Bearer ").trim().takeIf { it.isNotEmpty() }
+    val header =
+        request.headers["Authorization"]
+            ?: return null
+
+    if (!header.startsWith("Bearer ", ignoreCase = true)) {
+        return null
+    }
+
+    return header
+        .substringAfter("Bearer ")
+        .trim()
+        .takeIf { it.isNotEmpty() }
 }

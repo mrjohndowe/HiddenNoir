@@ -42,13 +42,18 @@ data class GenerationRequest(
 @Serializable
 data class GenerationResponse(
     val generationId: String,
-    val replies: List<ReplyCandidate>
+    val replies: List<ReplyCandidate>,
+    val model: String
 )
 
 @Serializable
 data class ReplyCandidate(
     val id: String,
-    val text: String,
-    val tone: String,
-    val intensity: String
+    val text: String
+)
+
+@Serializable
+data class ApiError(
+    val error: String,
+    val message: String? = null
 )

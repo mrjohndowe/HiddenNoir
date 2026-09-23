@@ -1,5 +1,8 @@
 package com.hiddennoir.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -20,7 +24,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { MaterialTheme { HiddenNoirApp(viewModel) } }
+        setContent {
+            MaterialTheme {
+                HiddenNoirApp(viewModel)
+            }
+        }
     }
 }
 
@@ -30,9 +38,14 @@ private fun HiddenNoirApp(viewModel: HiddenNoirViewModel) {
 
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         if (!ageConfirmed) {
-            AgeGate(Modifier.padding(padding)) { ageConfirmed = true }
+            AgeGate(Modifier.padding(padding)) {
+                ageConfirmed = true
+            }
         } else {
-            ConversationScreen(viewModel, Modifier.padding(padding))
+            ConversationScreen(
+                viewModel = viewModel,
+                modifier = Modifier.padding(padding)
+            )
         }
     }
 }
@@ -43,15 +56,19 @@ private fun AgeGate(
     onConfirm: () -> Unit
 ) {
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
         verticalArrangement = Arrangement.Center
     ) {
         Text("HiddenNoir", style = MaterialTheme.typography.displaySmall)
         Text("18+ only", style = MaterialTheme.typography.headlineMedium)
+
         Text(
-            "HiddenNoir is intended only for adults. Explicit mode also requires confirmation that everyone represented in the pasted conversation is 18 or older.",
+            text = "HiddenNoir is for adults. Explicit mode also requires confirmation that everyone represented in the conversation is 18 or older.",
             modifier = Modifier.padding(top = 12.dp, bottom = 24.dp)
         )
+
         Button(
             modifier = Modifier.fillMaxWidth(),
             onClick = onConfirm
@@ -67,6 +84,7 @@ private fun ConversationScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     var conversation by remember { mutableStateOf("") }
     var relationship by remember { mutableStateOf(Relationship.NEW_MATCH) }
@@ -75,13 +93,14 @@ private fun ConversationScreen(
     var adultAttestation by remember { mutableStateOf(false) }
 
     Column(
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text("HiddenNoir", style = MaterialTheme.typography.headlineMedium)
-        Text("Paste a conversation to generate reply ideas.")
+        Text("Paste a conversation. HiddenNoir does not intentionally save the raw conversation.")
 
         OutlinedTextField(
             modifier = Modifier.fillMaxWidth(),
@@ -109,10 +128,15 @@ private fun ConversationScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Confirm everyone represented in this conversation is 18 or older.")
                     Button(
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
                         onClick = { adultAttestation = !adultAttestation }
                     ) {
-                        Text(if (adultAttestation) "18+ confirmed" else "Confirm everyone is 18+")
+                        Text(
+                            if (adultAttestation) "18+ confirmed"
+                            else "Confirm everyone is 18+"
+                        )
                     }
                 }
             }
@@ -125,15 +149,22 @@ private fun ConversationScreen(
                 (intensity != Intensity.EXPLICIT || adultAttestation),
             onClick = {
                 viewModel.generate(
-                    conversation,
-                    relationship,
-                    tone,
-                    intensity,
-                    adultAttestation
+                    conversation = conversation,
+                    relationship = relationship,
+                    tone = tone,
+                    intensity = intensity,
+                    adultAttestation = adultAttestation
                 )
             }
         ) {
             Text(if (uiState.loading) "Generating…" else "Generate replies")
+        }
+
+        uiState.model?.let {
+            Text(
+                text = "Model: $it",
+                style = MaterialTheme.typography.labelSmall
+            )
         }
 
         uiState.error?.let {
@@ -145,12 +176,39 @@ private fun ConversationScreen(
         uiState.replies.forEachIndexed { index, reply ->
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Reply ${index + 1}", style = MaterialTheme.typography.labelLarge)
-                    Text(reply.text, modifier = Modifier.padding(top = 6.dp))
+                    Text(
+                        "Reply ${index + 1}",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+
+                    Text(
+                        reply.text,
+                        modifier = Modifier.padding(vertical = 10.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            copyToClipboard(
+                                context = context,
+                                text = reply.text
+                            )
+                        }
+                    ) {
+                        Text("Copy")
+                    }
                 }
             }
         }
     }
+}
+
+private fun copyToClipboard(context: Context, text: String) {
+    val clipboard =
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+    clipboard.setPrimaryClip(
+        ClipData.newPlainText("HiddenNoir reply", text)
+    )
 }
 
 @Composable
@@ -162,9 +220,13 @@ private fun <T> Selector(
     onSelect: (T) -> Unit
 ) {
     Text(title, style = MaterialTheme.typography.titleMedium)
+
     options.forEach { option ->
         TextButton(onClick = { onSelect(option) }) {
-            RadioButton(selected = selected == option, onClick = null)
+            RadioButton(
+                selected = selected == option,
+                onClick = null
+            )
             Text(label(option))
         }
     }

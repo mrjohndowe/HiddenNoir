@@ -3,9 +3,9 @@
 **/build/
 local.properties
 .env
+data/
 *.jks
 *.keystore
 *.apk
 *.aab
 .DS_Store
-out/

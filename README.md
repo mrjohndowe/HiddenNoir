@@ -1,56 +1,83 @@
-# HiddenNoir
+# HiddenNoir v0.3 — Ollama + SQLite
 
-HiddenNoir is the native Android implementation of SPEC-1: an 18+,
-privacy-first AI dating reply assistant.
+HiddenNoir is an 18+ privacy-first Android dating reply assistant.
 
-Official repository target:
+This development build removes Docker, PostgreSQL, and Redis.
 
-`https://github.com/mrjohndowe/HiddenNoir.git`
+Local architecture:
 
-## Current stage
+```text
+Physical Android phone
+        |
+        | adb reverse tcp:8081
+        v
+Ktor API on Windows PC :8081
+        |
+        +--> SQLite file (metadata only)
+        |
+        +--> Ollama :11434
+                  |
+                  v
+              qwen3:8b
+```
 
-Milestone 1 — Project Foundation.
+Raw pasted conversation text is not written to SQLite by this application.
 
-This revision includes:
-- Android app ID `com.hiddennoir.app`
-- Jetpack Compose UI
-- 18+ gate
-- conversation paste screen
-- relationship, tone, and intensity selectors
-- explicit-mode adult attestation
-- anonymous session bootstrap
-- Android-to-Ktor networking
-- bearer-token validation
-- Redis session store
-- Flyway baseline migration
-- PostgreSQL + Redis Docker services
-- API tests
-- CI skeleton
+## Requirements
 
-Real LLM inference and production safety classification are M2/M3 work.
-
-## Local prerequisites
-
+- Windows 10/11
 - JDK 17
-- Android SDK 37 / Android Studio
-- Gradle 9.5.0
-- Docker
+- Android Studio / Android SDK
+- USB debugging enabled on Android phone
+- Ollama installed
+- Gradle wrapper already generated in your working repository
 
-## First setup
+## Ollama model
 
-```bash
-gradle wrapper --gradle-version 9.5.0
-docker compose up -d
-./gradlew :api:test
-./gradlew :api:run
+Default:
+
+```powershell
+ollama pull qwen3:8b
 ```
 
-Open the repo in Android Studio and run `:app-android:app`.
+Override the model with:
 
-The emulator debug API URL is `http://10.0.2.2:8080`.
-
-To attach the GitHub remote:
-
-```bash
-bash scripts/connect-github.sh
+```powershell
+$env:OLLAMA_MODEL="another-model"
 ```
+
+## Run
+
+From the project root:
+
+```powershell
+adb reverse tcp:8081 tcp:8081
+ollama list
+.\gradlew.bat :api:run
+```
+
+Then run/install the Android app from Android Studio and tap Generate.
+
+## SQLite
+
+Default file:
+
+```text
+data/hiddennoir.db
+```
+
+Override:
+
+```powershell
+$env:HIDDENNOIR_DB_PATH="G:\somewhere\hiddennoir.db"
+```
+
+The database stores sessions and generation metadata only, not pasted
+conversation text or generated reply bodies.
+
+## Development status
+
+This is a functional local-development slice. Before public production release,
+the model/safety layer still needs a dedicated regression suite, production
+authentication, payment integration, hardened rate limiting, and deployment
+infrastructure.

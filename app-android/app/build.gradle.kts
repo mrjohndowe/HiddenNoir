@@ -12,8 +12,8 @@ android {
         applicationId = "com.hiddennoir.app"
         minSdk = 28
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2.0-dev"
+        versionCode = 3
+        versionName = "0.3.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -22,13 +22,25 @@ android {
         buildConfig = true
     }
 
+    val apiBaseUrl = providers.gradleProperty("hiddennoirApiUrl")
+        .getOrElse("http://10.0.0.101:8081")
+
     buildTypes {
         debug {
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"$apiBaseUrl\""
+            )
         }
+
         release {
             isMinifyEnabled = true
-            buildConfigField("String", "API_BASE_URL", "\"https://api.hiddennoir.invalid\"")
+            buildConfigField(
+                "String",
+                "API_BASE_URL",
+                "\"$apiBaseUrl\""
+            )
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
