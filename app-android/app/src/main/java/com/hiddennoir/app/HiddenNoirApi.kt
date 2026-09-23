@@ -1,14 +1,14 @@
 package com.hiddennoir.app
 
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.contentType
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -29,7 +29,7 @@ class HiddenNoirApi(
     suspend fun generate(request: GenerationRequest): GenerationResponse {
         validate(request)
         val count = request.replyCount.coerceIn(3, 5)
-        val response: OllamaChatResponse = client.post("${ollamaBaseUrl.trimEnd('/')}/api/chat") {
+        val responseBody = client.post("${ollamaBaseUrl.trimEnd('/')}/api/chat") {
             contentType(ContentType.Application.Json)
             setBody(OllamaChatRequest(
                 model = model,
@@ -39,7 +39,8 @@ class HiddenNoirApi(
                 ),
                 options = OllamaOptions(temperature = 0.95, topP = 0.92)
             ))
-        }.body()
+        }.bodyAsText()
+        val response = decodeOllamaResponse(responseBody)
 
         val replies = decodeReplies(response.message.content, count)
         if (replies.size != count) throw IllegalStateException("Ollama did not return $count usable reply options. Please try again.")
@@ -67,6 +68,28 @@ class HiddenNoirApi(
                 .map { it.replace(Regex("[\\u2013\\u2014]"), ",").trim() }
                 .filter { it.length >= 8 }.distinct().take(count)
         } catch (_: SerializationException) { emptyList() }
+    }
+
+    /**
+     * Some reverse proxies return an Ollama chat completion as x-ndjson even
+     * when stream=false. Read the final complete event in that case, while
+     * still accepting the usual single JSON response.
+     */
+    private fun decodeOllamaResponse(responseBody: String): OllamaChatResponse {
+        val events = responseBody.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .mapNotNull { line ->
+                try {
+                    json.decodeFromString<OllamaChatResponse>(line)
+                } catch (_: SerializationException) {
+                    null
+                }
+            }
+            .toList()
+
+        return events.lastOrNull { it.done } ?: events.lastOrNull()
+            ?: throw IllegalStateException("Ollama returned an unreadable response. Please try again.")
     }
 
     private fun validate(request: GenerationRequest) {

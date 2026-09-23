@@ -190,11 +190,14 @@ function Install-AndroidApp {
     }
 
     if ($Clean) {
+        # Do not run the root clean here. The API wrapper can be running from
+        # api\build\install, and Windows will lock those JARs. A phone reinstall
+        # only needs the Android module cleaned.
         Write-Host "Cleaning the Android build..."
-        Invoke-Gradle clean
+        Invoke-Gradle :app-android:app:clean
     }
 
-    Write-Host "Creating and installing a new debug build with the direct Wi-Fi API URL..."
+    Write-Host "Creating and installing a new debug build with the direct Ollama connection..."
     Invoke-Gradle :app-android:app:installDebug --warning-mode all
 
     $apk = Join-Path $projectRoot "app-android\app\build\outputs\apk\debug\app-debug.apk"
@@ -223,7 +226,7 @@ do {
     Write-Host "2. Start API with fast general model"
     Write-Host "3. Stop the running API"
     Write-Host "4. Configure optional USB ADB reverse tunnel"
-    Write-Host "5. Build and install Android app (direct Wi-Fi API)"
+    Write-Host "5. Build and install Android app (direct Ollama connection)"
     Write-Host "6. Full Android reinstall (uninstall, clean, build, install, verify)"
     Write-Host "7. Run API build and tests"
     Write-Host "8. Check Ollama and API health"

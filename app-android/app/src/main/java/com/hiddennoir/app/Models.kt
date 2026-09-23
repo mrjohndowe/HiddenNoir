@@ -73,7 +73,11 @@ data class OllamaChatRequest(
 )
 
 @Serializable
-data class OllamaChatResponse(val model: String, val message: OllamaMessage)
+data class OllamaChatResponse(
+    val model: String,
+    val message: OllamaMessage,
+    val done: Boolean = false
+)
 
 @Serializable
 data class ModelReplyEnvelope(val replies: List<String>)
