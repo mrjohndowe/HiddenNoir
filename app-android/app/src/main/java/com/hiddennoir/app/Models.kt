@@ -1,5 +1,6 @@
 package com.hiddennoir.app
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 enum class Relationship(val apiValue: String, val label: String) {
@@ -22,12 +23,6 @@ enum class Intensity(val apiValue: String, val label: String) {
     SUGGESTIVE("suggestive", "Suggestive"),
     EXPLICIT("explicit", "Explicit")
 }
-
-@Serializable
-data class AnonymousSessionResponse(
-    val accessToken: String,
-    val expiresInSeconds: Long
-)
 
 @Serializable
 data class GenerationRequest(
@@ -57,3 +52,28 @@ data class ApiError(
     val error: String,
     val message: String? = null
 )
+
+@Serializable
+data class OllamaMessage(val role: String, val content: String)
+
+@Serializable
+data class OllamaOptions(
+    val temperature: Double = 0.95,
+    @SerialName("top_p") val topP: Double = 0.92
+)
+
+@Serializable
+data class OllamaChatRequest(
+    val model: String,
+    val messages: List<OllamaMessage>,
+    val stream: Boolean = false,
+    val think: Boolean = false,
+    val format: String = "json",
+    val options: OllamaOptions = OllamaOptions()
+)
+
+@Serializable
+data class OllamaChatResponse(val model: String, val message: OllamaMessage)
+
+@Serializable
+data class ModelReplyEnvelope(val replies: List<String>)

@@ -22,15 +22,22 @@ android {
         buildConfig = true
     }
 
-    val apiBaseUrl = providers.gradleProperty("hiddennoirApiUrl")
-        .getOrElse("http://10.0.0.101:8081")
+    val ollamaBaseUrl = providers.gradleProperty("hiddennoirOllamaUrl")
+        .getOrElse("http://147.224.198.239:11434")
+    val ollamaModel = providers.gradleProperty("hiddennoirOllamaModel")
+        .getOrElse("jimscard/new-adult-writer:latest")
 
     buildTypes {
         debug {
             buildConfigField(
                 "String",
-                "API_BASE_URL",
-                "\"$apiBaseUrl\""
+                "OLLAMA_BASE_URL",
+                "\"$ollamaBaseUrl\""
+            )
+            buildConfigField(
+                "String",
+                "OLLAMA_MODEL",
+                "\"$ollamaModel\""
             )
         }
 
@@ -38,8 +45,13 @@ android {
             isMinifyEnabled = true
             buildConfigField(
                 "String",
-                "API_BASE_URL",
-                "\"$apiBaseUrl\""
+                "OLLAMA_BASE_URL",
+                "\"$ollamaBaseUrl\""
+            )
+            buildConfigField(
+                "String",
+                "OLLAMA_MODEL",
+                "\"$ollamaModel\""
             )
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
