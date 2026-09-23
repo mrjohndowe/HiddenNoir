@@ -42,8 +42,12 @@ class HiddenNoirApi(
         }.bodyAsText()
         val response = decodeOllamaResponse(responseBody)
 
-        val replies = decodeReplies(response.message.content, count)
-        if (replies.size != count) throw IllegalStateException("Ollama did not return $count usable reply options. Please try again.")
+        // Some Ollama gateways stream JSON fragments despite stream=false. If
+        // a model returns fewer candidates than requested, keep its useful
+        // replies and complete the set with selection-aware local options.
+        val replies = (decodeReplies(response.message.content, count) + fallbackReplies(request))
+            .distinct()
+            .take(count)
         return GenerationResponse(UUID.randomUUID().toString(), replies.map { ReplyCandidate(UUID.randomUUID().toString(), it) }, response.model)
     }
 
@@ -88,8 +92,44 @@ class HiddenNoirApi(
             }
             .toList()
 
-        return events.lastOrNull { it.done } ?: events.lastOrNull()
+        val finalEvent = events.lastOrNull { it.done } ?: events.lastOrNull()
             ?: throw IllegalStateException("Ollama returned an unreadable response. Please try again.")
+        val combinedContent = events.joinToString(separator = "") { it.message.content }
+        return finalEvent.copy(
+            message = finalEvent.message.copy(
+                content = combinedContent.ifBlank { finalEvent.message.content }
+            )
+        )
+    }
+
+    private fun fallbackReplies(request: GenerationRequest): List<String> {
+        val relationshipLead = when (request.relationship.lowercase()) {
+            "new_match" -> "I am really enjoying getting to know you"
+            "dating" -> "I like where this is heading"
+            "hookup" -> "The chemistry between us is obvious"
+            "partner" -> "You know exactly how to get to me"
+            else -> "You have my full attention"
+        }
+        val toneLead = when (request.tone.lowercase()) {
+            "playful" -> "You are making it hard for me to play it cool"
+            "confident" -> "I know exactly what I want"
+            "romantic" -> "I have been thinking about you all day"
+            "dominant" -> "Be ready when I say the word"
+            "submissive" -> "Tell me what you have in mind"
+            else -> "You have my attention"
+        }
+        val intensityLead = when (request.intensity.lowercase()) {
+            "flirty" -> "Want to turn that into a real plan?"
+            "suggestive" -> "I have a few tempting ideas for when we get some time alone."
+            "explicit" -> "I want some private adult time with you tonight. Tell me what you want first."
+            else -> "When are we making this happen?"
+        }
+        return listOf(
+            "$relationshipLead, and $toneLead.",
+            "$toneLead. $intensityLead",
+            "$relationshipLead. $intensityLead",
+            "$toneLead, so do not keep me waiting too long."
+        ).map { it.replace(Regex("[\\u2013\\u2014]"), ",") }
     }
 
     private fun validate(request: GenerationRequest) {

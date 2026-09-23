@@ -61,6 +61,26 @@ function Connect-Phone {
 }
 
 function Build-ApiPackage {
+    $apiInstallDirectory = Join-Path $projectRoot "api\build\install\api"
+    $expectedInstallDirectory = [System.IO.Path]::GetFullPath($apiInstallDirectory)
+
+    # installDist cannot replace a partial/stale distribution. This is a
+    # generated directory only, and Start-ApiWrapper has already confirmed
+    # that no API process is listening before reaching this function.
+    if (Test-Path -LiteralPath $apiInstallDirectory) {
+        $resolvedInstallDirectory = (Resolve-Path -LiteralPath $apiInstallDirectory).Path
+        if (-not [string]::Equals(
+                [System.IO.Path]::GetFullPath($resolvedInstallDirectory),
+                $expectedInstallDirectory,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+            throw "Refusing to remove an unexpected API install path: $resolvedInstallDirectory"
+        }
+
+        Write-Host "Removing the stale generated API package..."
+        Remove-Item -LiteralPath $resolvedInstallDirectory -Recurse -Force
+    }
+
     Write-Host "Building the standalone API package..."
     Invoke-Gradle :api:installDist
 }
