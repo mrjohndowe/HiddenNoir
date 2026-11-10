@@ -9,3 +9,5 @@ data/
 *.apk
 *.aab
 .DS_Store
+
+**/.cxx/

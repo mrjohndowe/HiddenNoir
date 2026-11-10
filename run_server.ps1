@@ -1,7 +1,10 @@
 $ErrorActionPreference = "Stop"
 
 $projectRoot = $PSScriptRoot
-$adb = "C:\Users\MrJohnDowe\AppData\Local\Android\Sdk\platform-tools\adb.exe"
+$sdk = $env:ANDROID_HOME
+if (-not $sdk) { $sdk = $env:ANDROID_SDK_ROOT }
+if (-not $sdk) { $sdk = Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+$adb = Join-Path $sdk 'platform-tools\adb.exe'
 $apiPort = 8081
 $apiBaseUrl = "http://127.0.0.1:$apiPort"
 $logDirectory = Join-Path $projectRoot ".run-logs"
@@ -43,21 +46,6 @@ function Test-Ollama {
     $response = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 10
     Write-Host "Local Ollama is reachable. Installed models:"
     $response.models | ForEach-Object { Write-Host "  - $($_.name)" }
-}
-
-function Connect-Phone {
-    if (-not (Test-Path $adb)) {
-        throw "ADB was not found at $adb"
-    }
-
-    Write-Host "Checking connected Android devices..."
-    & $adb devices
-    Write-Host ""
-    Write-Host "Forwarding phone localhost:$apiPort to this PC..."
-    & $adb reverse "tcp:$apiPort" "tcp:$apiPort"
-    Write-Host ""
-    Write-Host "Active reverse mappings:"
-    & $adb reverse --list
 }
 
 function Build-ApiPackage {
@@ -190,89 +178,72 @@ function Get-ConnectedDeviceCount {
         Select-Object -ExpandProperty Count
 }
 
-function Install-AndroidApp {
-    param(
-        [switch]$Clean,
-        [switch]$UninstallFirst
-    )
+function Build-AndroidApp {
+    param([switch]$Clean)
 
-    $deviceCount = Get-ConnectedDeviceCount
-    if ($deviceCount -eq 0) {
-        throw "No authorized Android phone was found. Connect the phone, unlock it, and accept the USB debugging prompt."
-    }
+    if ($Clean) { Invoke-Gradle :app-android:app:clean }
+    Invoke-Gradle :app-android:app:assembleDebug
 
-    if ($UninstallFirst) {
-        Write-Host "Removing the existing HiddenNoir app from the connected phone..."
-        & $adb uninstall com.hiddennoir.app | Out-Host
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "The app was not installed yet, so installation will continue." -ForegroundColor Yellow
-        }
-    }
-
-    if ($Clean) {
-        # Do not run the root clean here. The API wrapper can be running from
-        # api\build\install, and Windows will lock those JARs. A phone reinstall
-        # only needs the Android module cleaned.
-        Write-Host "Cleaning the Android build..."
-        Invoke-Gradle :app-android:app:clean
-    }
-
-    Write-Host "Creating and installing a new debug build with the direct Ollama connection..."
-    Invoke-Gradle :app-android:app:installDebug --warning-mode all
-
-    $apk = Join-Path $projectRoot "app-android\app\build\outputs\apk\debug\app-debug.apk"
-    if (-not (Test-Path $apk)) {
-        throw "Gradle reported success, but the debug APK was not found at $apk"
-    }
-
-    $installed = @(& $adb shell pm path com.hiddennoir.app) | Select-String -Quiet "package:"
-    if (-not $installed) {
-        throw "The build completed, but HiddenNoir could not be verified as installed on the phone."
-    }
-
-    Write-Host "HiddenNoir was installed and verified on the connected phone." -ForegroundColor Green
-    Write-Host "APK: $apk"
+    $apk = Join-Path $projectRoot 'app-android\app\build\outputs\apk\debug\app-debug.apk'
+    if (-not (Test-Path -LiteralPath $apk)) { throw "Debug APK was not found at $apk." }
+    Write-Host "Standalone APK: $apk"
 }
 
-Set-Location $projectRoot
+function Install-AndroidApp {
+    param([switch]$Clean)
 
-do {
-    Clear-Host
-    Write-Host "HiddenNoir Control Center" -ForegroundColor Cyan
-    Write-Host ""
-    Show-ServerStatus
-    Write-Host ""
-    Write-Host "1. Start API with adult writing model"
-    Write-Host "2. Start API with fast general model"
-    Write-Host "3. Stop the running API"
-    Write-Host "4. Configure optional USB ADB reverse tunnel"
-    Write-Host "5. Build and install Android app (direct Ollama connection)"
-    Write-Host "6. Full Android reinstall (uninstall, clean, build, install, verify)"
-    Write-Host "7. Run API build and tests"
-    Write-Host "8. Check Ollama and API health"
-    Write-Host "9. Stream live API logs in this terminal"
-    Write-Host "10. Open API logs folder"
-    Write-Host "11. Exit"
-    Write-Host ""
-
-    switch (Read-Host "Choose an option") {
-        "1" { Start-ApiWrapper "jimscard/adult-film-screenwriter-nsfw:latest"; Pause-Menu }
-        "2" { Start-ApiWrapper "llama3.2:latest"; Pause-Menu }
-        "3" { Stop-ApiWrapper; Pause-Menu }
-        "4" { Connect-Phone; Pause-Menu }
-        "5" { Install-AndroidApp; Pause-Menu }
-        "6" { Install-AndroidApp -Clean -UninstallFirst; Pause-Menu }
-        "7" {
-            Invoke-Gradle :api:compileKotlin :api:test
-            Pause-Menu
-        }
-        "8" { Test-Ollama; Show-ServerStatus; Pause-Menu }
-        "9" { Show-LiveServerLogs }
-        "10" { Invoke-Item $logDirectory; Pause-Menu }
-        "11" { break }
-        default {
-            Write-Host "Choose a number from 1 to 11." -ForegroundColor Yellow
-            Start-Sleep -Seconds 1
-        }
+    if ((Get-ConnectedDeviceCount) -ne 1) {
+        throw 'Connect exactly one authorized Android device for installation.'
     }
-} while ($true)
+    Build-AndroidApp -Clean:$Clean
+    $apk = Join-Path $projectRoot 'app-android\app\build\outputs\apk\debug\app-debug.apk'
+    & $adb install --no-streaming -r $apk
+    if ($LASTEXITCODE -ne 0) { throw 'ADB could not install the standalone APK.' }
+
+    $installed = @(& $adb shell pm path com.hiddennoir.app) | Select-String -Quiet 'package:'
+    if (-not $installed) { throw 'HiddenNoir could not be verified on the device.' }
+    Write-Host 'Installed HiddenNoir. Open the app and import a local GGUF model.' -ForegroundColor Green
+}
+
+Set-Location -LiteralPath $projectRoot
+
+while ($true) {
+    if (-not [Console]::IsOutputRedirected) { Clear-Host }
+    Write-Host 'HiddenNoir Control Center' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host 'Standalone Android'
+    Write-Host '  1. Build debug APK'
+    Write-Host '  2. Build and install on the connected device'
+    Write-Host '  3. Clean build and update the app on the connected device'
+    Write-Host ''
+    Write-Host 'Legacy desktop API'
+    Write-Host '  4. Start API with adult writing model'
+    Write-Host '  5. Start API with fast general model'
+    Write-Host '  6. Stop the API'
+    Write-Host '  7. Run API build and tests'
+    Write-Host '  8. Check Ollama and API health'
+    Write-Host '  9. Stream live API logs'
+    Write-Host ' 10. Open API logs folder'
+    Write-Host ' 11. Exit'
+    Write-Host ''
+
+    try {
+        switch (Read-Host 'Choose an option') {
+            '1' { Build-AndroidApp }
+            '2' { Install-AndroidApp }
+            '3' { Install-AndroidApp -Clean }
+            '4' { Start-ApiWrapper 'jimscard/adult-film-screenwriter-nsfw:latest' }
+            '5' { Start-ApiWrapper 'llama3.2:latest' }
+            '6' { Stop-ApiWrapper }
+            '7' { Invoke-Gradle :api:compileKotlin :api:test }
+            '8' { Test-Ollama; Show-ServerStatus }
+            '9' { Show-LiveServerLogs }
+            '10' { Invoke-Item $logDirectory }
+            '11' { return }
+            default { Write-Host 'Choose a number from 1 to 11.' -ForegroundColor Yellow }
+        }
+    } catch {
+        Write-Host $_.Exception.Message -ForegroundColor Red
+    }
+    Pause-Menu
+}

@@ -1,83 +1,14 @@
-# HiddenNoir v0.3 — Ollama + SQLite
+# HiddenNoir
 
-HiddenNoir is an 18+ privacy-first Android dating reply assistant.
+HiddenNoir is an 18+ Android reply studio. It runs llama.cpp directly on the device and saves the current draft, replies, and preferences in app-private storage. Use **Clear draft** to remove the saved conversation and replies.
 
-This development build removes Docker, PostgreSQL, and Redis.
+## First run
 
-Local architecture:
+1. Put a compatible GGUF text instruction model in the phone's Downloads folder. A small starting point is [Qwen2.5-0.5B-Instruct Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF).
+2. Open HiddenNoir, confirm you are 18 or older, and tap **Import GGUF model**.
+3. Select the file. The app validates it and copies it into private storage. Allow space for both copies during setup. After import succeeds, you can remove the original from Downloads.
+4. Paste messages, choose a direction, and tap **Generate replies**. With the GGUF already on the phone, import and generation can run in airplane mode.
 
-```text
-Physical Android phone
-        |
-        | adb reverse tcp:8081
-        v
-Ktor API on Windows PC :8081
-        |
-        +--> SQLite file (metadata only)
-        |
-        +--> Ollama :11434
-                  |
-                  v
-              qwen3:8b
-```
+The APK supports Android 9 and newer on ARM64 and x86-64. Choose an unsplit text GGUF with a chat template supported by llama.cpp. Start with a small non-reasoning model. Larger models need more memory and can be slow.
 
-Raw pasted conversation text is not written to SQLite by this application.
-
-## Requirements
-
-- Windows 10/11
-- JDK 17
-- Android Studio / Android SDK
-- USB debugging enabled on Android phone
-- Ollama installed
-- Gradle wrapper already generated in your working repository
-
-## Ollama model
-
-Default:
-
-```powershell
-ollama pull qwen3:8b
-```
-
-Override the model with:
-
-```powershell
-$env:OLLAMA_MODEL="another-model"
-```
-
-## Run
-
-From the project root:
-
-```powershell
-adb reverse tcp:8081 tcp:8081
-ollama list
-.\gradlew.bat :api:run
-```
-
-Then run/install the Android app from Android Studio and tap Generate.
-
-## SQLite
-
-Default file:
-
-```text
-data/hiddennoir.db
-```
-
-Override:
-
-```powershell
-$env:HIDDENNOIR_DB_PATH="G:\somewhere\hiddennoir.db"
-```
-
-The database stores sessions and generation metadata only, not pasted
-conversation text or generated reply bodies.
-
-## Development status
-
-This is a functional local-development slice. Before public production release,
-the model/safety layer still needs a dedicated regression suite, production
-authentication, payment integration, hardened rate limiting, and deployment
-infrastructure.
+See [Build](docs/BUILD.md) and [Windows Control Center](docs/WINDOWS-RUN.md). The separate desktop API supports Ollama for legacy use.

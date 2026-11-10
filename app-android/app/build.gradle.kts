@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.hiddennoir.app"
     compileSdk = 37
+    ndkVersion = "29.0.14206865"
 
     defaultConfig {
         applicationId = "com.hiddennoir.app"
@@ -15,44 +16,21 @@ android {
         versionCode = 3
         versionName = "0.3.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
-    buildFeatures {
-        compose = true
-        buildConfig = true
-    }
+    buildFeatures { compose = true }
 
-    val ollamaBaseUrl = providers.gradleProperty("hiddennoirOllamaUrl")
-        .getOrElse("http://147.224.198.239:11434")
-    val ollamaModel = providers.gradleProperty("hiddennoirOllamaModel")
-        .getOrElse("jimscard/new-adult-writer:latest")
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.31.6"
+        }
+    }
 
     buildTypes {
-        debug {
-            buildConfigField(
-                "String",
-                "OLLAMA_BASE_URL",
-                "\"$ollamaBaseUrl\""
-            )
-            buildConfigField(
-                "String",
-                "OLLAMA_MODEL",
-                "\"$ollamaModel\""
-            )
-        }
-
         release {
             isMinifyEnabled = true
-            buildConfigField(
-                "String",
-                "OLLAMA_BASE_URL",
-                "\"$ollamaBaseUrl\""
-            )
-            buildConfigField(
-                "String",
-                "OLLAMA_MODEL",
-                "\"$ollamaModel\""
-            )
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -82,10 +60,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
-    implementation("io.ktor:ktor-client-core:3.5.2")
-    implementation("io.ktor:ktor-client-okhttp:3.5.2")
-    implementation("io.ktor:ktor-client-content-negotiation:3.5.2")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.5.2")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
