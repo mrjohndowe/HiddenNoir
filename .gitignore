@@ -9,3 +9,13 @@ data/
 *.apk
 *.aab
 .DS_Store
+
+**/.cxx/
+.run-logs/
+.vscode/
+*.zip
+*.7zip
+*.7zip**
+*.rar
+*.rar**
+*.zip**

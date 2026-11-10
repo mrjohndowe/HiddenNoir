@@ -1,14 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET" />
-
     <application
         android:allowBackup="false"
         android:icon="@drawable/hiddennoir_launcher"
         android:label="HiddenNoir"
         android:roundIcon="@drawable/hiddennoir_launcher"
         android:supportsRtl="true"
-        android:theme="@style/Theme.HiddenNoir"
-        android:usesCleartextTraffic="true">
+        android:theme="@style/Theme.HiddenNoir">
 
         <activity
             android:name=".MainActivity"

@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -52,8 +54,10 @@ class MainActivity : ComponentActivity() {
 )
 
 @Composable private fun HiddenNoirApp(viewModel: HiddenNoirViewModel) {
-    var confirmed by remember { mutableStateOf(false) }
-    Surface(Modifier.fillMaxSize(), color = Noir) { if (confirmed) Studio(viewModel) else AgeGate { confirmed = true } }
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    Surface(Modifier.fillMaxSize(), color = Noir) {
+        if (state.adultGateAccepted) Studio(viewModel) else AgeGate(viewModel::acceptAdultGate)
+    }
 }
 
 @Composable private fun AgeGate(onConfirm: () -> Unit) = Box(
@@ -75,11 +79,11 @@ class MainActivity : ComponentActivity() {
 @Composable private fun Studio(viewModel: HiddenNoirViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
-    var conversation by remember { mutableStateOf("") }
-    var relationship by remember { mutableStateOf(Relationship.NEW_MATCH) }
-    var tone by remember { mutableStateOf(Tone.PLAYFUL) }
-    var intensity by remember { mutableStateOf(Intensity.FLIRTY) }
-    var adultConfirmed by remember { mutableStateOf(false) }
+    val draft = state.draft
+    var adultConfirmed by remember(draft.conversation, draft.intensity) { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importModel(uri)
+    }
     Column(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF160E22), Noir, Noir))).windowInsetsPadding(WindowInsets.statusBars).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -87,26 +91,56 @@ class MainActivity : ComponentActivity() {
         BrandHeader(true)
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Section("ON-DEVICE MODEL")
+                Text(
+                    state.model ?: "Choose a local GGUF instruct model to get started.",
+                    color = Muted
+                )
+                if (state.model == null) {
+                    Text("A small quantized model such as Qwen2.5 0.5B Instruct Q4_K_M is a good starting point. Put the file on your phone before importing.", color = Muted, fontSize = 14.sp)
+                }
+                PrimaryButton(
+                    when {
+                        state.importing -> "Importing model…"
+                        state.model == null -> "Import GGUF model"
+                        else -> "Replace model"
+                    },
+                    { picker.launch(arrayOf("*/*")) },
+                    !state.importing && !state.loading
+                )
+                state.modelError?.let { Text(it, color = Color(0xFFFFB4AB)) }
+            }
+        }
+        Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Section("THE CONVERSATION")
                 Text("What are you replying to?", fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
-                Text("Paste the recent messages. Your raw conversation is used only to shape this generation.", color = Muted, fontSize = 14.sp)
-                OutlinedTextField(value = conversation, onValueChange = { conversation = it }, modifier = Modifier.fillMaxWidth(), minLines = 6, label = { Text("Paste messages here") }, shape = RoundedCornerShape(16.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Violet, unfocusedBorderColor = Color(0xFF51485E), focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Lavender, unfocusedLabelColor = Muted))
+                Text("Your draft and replies are saved on this device. Clear the draft to remove them.", color = Muted, fontSize = 14.sp)
+                OutlinedTextField(value = draft.conversation, onValueChange = { viewModel.updateDraft(draft.copy(conversation = it)) }, modifier = Modifier.fillMaxWidth(), minLines = 6, label = { Text("Paste messages here") }, shape = RoundedCornerShape(16.dp), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Violet, unfocusedBorderColor = Color(0xFF51485E), focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedLabelColor = Lavender, unfocusedLabelColor = Muted))
+                TextButton(
+                    onClick = { viewModel.updateDraft(draft.copy(conversation = "")) },
+                    enabled = draft.conversation.isNotEmpty()
+                ) { Text("Clear draft") }
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Section("DIRECTION")
-                ChoiceGroup("Relationship", Relationship.entries, relationship, { it.label }) { relationship = it }
-                ChoiceGroup("Tone", Tone.entries, tone, { it.label }) { tone = it }
-                ChoiceGroup("Intensity", Intensity.entries, intensity, { it.label }) { intensity = it; if (it != Intensity.EXPLICIT) adultConfirmed = false }
+                ChoiceGroup("Relationship", Relationship.entries, draft.relationship, { it.label }) { viewModel.updateDraft(draft.copy(relationship = it)) }
+                ChoiceGroup("Tone", Tone.entries, draft.tone, { it.label }) { viewModel.updateDraft(draft.copy(tone = it)) }
+                ChoiceGroup("Intensity", Intensity.entries, draft.intensity, { it.label }) { viewModel.updateDraft(draft.copy(intensity = it)) }
             }
         }
-        if (intensity == Intensity.EXPLICIT) AdultConfirm(adultConfirmed) { adultConfirmed = !adultConfirmed }
-        PrimaryButton(if (state.loading) "Finding your next line…" else "Generate replies", { viewModel.generate(conversation, relationship, tone, intensity, adultConfirmed) }, !state.loading && conversation.isNotBlank() && (intensity != Intensity.EXPLICIT || adultConfirmed))
-        state.model?.let { Text("Powered locally by $it", color = Muted, fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
+        if (draft.intensity == Intensity.EXPLICIT) AdultConfirm(adultConfirmed) { adultConfirmed = !adultConfirmed }
+        PrimaryButton(
+            if (state.loading) "Finding your next line…" else "Generate replies",
+            { viewModel.generate(adultConfirmed) },
+            !state.loading && !state.importing && state.model != null && draft.conversation.isNotBlank() &&
+                (draft.intensity != Intensity.EXPLICIT || adultConfirmed)
+        )
         state.error?.let { Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2027)), shape = Panel) { Text(it, color = Color(0xFFFFB4AB), modifier = Modifier.padding(18.dp)) } }
-        if (state.replies.isNotEmpty()) Section("YOUR OPTIONS")
-        state.replies.forEachIndexed { index, reply -> ReplyCard(index + 1, reply.text) { copy(context, reply.text) } }
+        if (draft.replies.isNotEmpty()) Section("YOUR OPTIONS")
+        draft.replies.forEachIndexed { index, reply -> ReplyCard(index + 1, reply) { copy(context, reply) } }
         Spacer(Modifier.height(16.dp))
     }
 }
