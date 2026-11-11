@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.inputmethodservice.InputMethodService
 import android.text.InputType
+import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -49,7 +50,7 @@ class HiddenNoirKeyboard : InputMethodService() {
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onCreateInputView(): View = column().apply {
-        setBackgroundColor(NoirPalette.background)
+        setBackgroundColor(KEYBOARD_BACKGROUND)
         val edgePadding = dp(4)
         val minimumBottomClearance = dp(44)
         setPadding(edgePadding, edgePadding, edgePadding, minimumBottomClearance)
@@ -66,9 +67,6 @@ class HiddenNoirKeyboard : InputMethodService() {
             actions.addView(button("Selected", ::useSelection), weighted())
             toolbar.addView(actions, weighted())
         }
-        toolbar.addView(button("Switch") {
-            getSystemService(InputMethodManager::class.java).showInputMethodPicker()
-        })
         addView(toolbar)
         direction = button("", {
             startActivity(Intent(this@HiddenNoirKeyboard, MainActivity::class.java)
@@ -278,31 +276,101 @@ class HiddenNoirKeyboard : InputMethodService() {
     private fun renderKeys() {
         val layout = keys ?: return
         layout.removeAllViews()
-        val rows = if (symbols) listOf("1234567890", "@#&-_+()", "!?/:;") else listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
-        rows.forEachIndexed { index, letters ->
-            val row = LinearLayout(this)
-            if (index == 2 && !symbols) {
-                row.addView(button("⇧") { shifted = !shifted; renderKeys() }, weighted())
+        layout.addView(characterRow("1234567890", compact = true))
+        layout.addView(characterRow(if (symbols) "@#$%&-+()" else "qwertyuiop"))
+        layout.addView(characterRow(if (symbols) "*\"':;!?/" else "asdfghjkl", staggered = true))
+        layout.addView(keyRow().apply {
+            if (symbols) {
+                "_=~<>[]".forEach { character -> addCharacter(character.toString()) }
+            } else {
+                addKey("⇧", description = if (shifted) "Shift on" else "Shift", weight = 1.5f,
+                    modifierKey = true, active = shifted) {
+                    shifted = !shifted
+                    renderKeys()
+                }
+                "zxcvbnm".forEach { character -> addCharacter(character.toString()) }
             }
-            letters.forEach { letter ->
-                val key = if (shifted && !symbols) letter.uppercase() else letter.toString()
-                row.addView(button(key) {
-                    currentInputConnection?.commitText(key, 1)
-                    if (shifted && !symbols) {
-                        shifted = false
-                        renderKeys()
-                    }
-                }, weighted())
+            addKey("⌫", description = "Backspace", weight = 1.5f, modifierKey = true, action = ::backspace)
+        })
+        layout.addView(keyRow().apply {
+            addKey(if (symbols) "ABC" else "!#1", weight = 1.3f, modifierKey = true) {
+                symbols = !symbols
+                shifted = false
+                renderKeys()
             }
-            if (index == 2) row.addView(button("⌫", ::backspace), weighted())
-            layout.addView(row)
+            addKey("🌐", description = "Switch keyboard", modifierKey = true) {
+                getSystemService(InputMethodManager::class.java).showInputMethodPicker()
+            }
+            addKey(",") { currentInputConnection?.commitText(",", 1) }
+            addKey("English (US)", description = "Space", weight = 4.4f) {
+                currentInputConnection?.commitText(" ", 1)
+            }
+            addKey(".") { currentInputConnection?.commitText(".", 1) }
+            addKey("↵", description = "Enter · New line", weight = 1.4f, modifierKey = true) {
+                currentInputConnection?.commitText("\n", 1)
+            }
+        })
+    }
+
+    private fun keyRow() = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+
+    private fun characterRow(characters: String, compact: Boolean = false, staggered: Boolean = false) =
+        keyRow().apply {
+            if (staggered) addView(View(context), LinearLayout.LayoutParams(0, 1, 0.5f))
+            characters.forEach { addCharacter(it.toString(), compact) }
+            if (staggered) addView(View(context), LinearLayout.LayoutParams(0, 1, 0.5f))
         }
-        layout.addView(LinearLayout(this).apply {
-            addView(button(if (symbols) "ABC" else "?123") { symbols = !symbols; renderKeys() }, weighted())
-            addView(button(",") { currentInputConnection?.commitText(",", 1) }, weighted())
-            addView(button("Space") { currentInputConnection?.commitText(" ", 1) }, weighted(4f))
-            addView(button(".") { currentInputConnection?.commitText(".", 1) }, weighted())
-            addView(button("↵") { currentInputConnection?.commitText("\n", 1) }, weighted())
+
+    private fun LinearLayout.addCharacter(character: String, compact: Boolean = false) {
+        val label = if (shifted && !symbols) character.uppercase() else character
+        addKey(label, compact = compact) {
+            currentInputConnection?.commitText(label, 1)
+            if (shifted && !symbols && character.first().isLetter()) {
+                shifted = false
+                renderKeys()
+            }
+        }
+    }
+
+    private fun LinearLayout.addKey(
+        label: String,
+        description: String? = null,
+        weight: Float = 1f,
+        modifierKey: Boolean = false,
+        active: Boolean = false,
+        compact: Boolean = false,
+        action: () -> Unit
+    ) {
+        val key = Button(context).apply {
+            text = label
+            contentDescription = description
+            isAllCaps = false
+            minimumWidth = 0
+            minWidth = 0
+            minimumHeight = 0
+            minHeight = 0
+            setPadding(0, 0, 0, 0)
+            setSingleLine()
+            setTextColor(0xFFF5F5F7.toInt())
+            textSize = if (compact || label.length > 2) 14f else 20f
+            elevation = dp(1).toFloat()
+            stateListAnimator = null
+            background = RippleDrawable(
+                ColorStateList.valueOf(0x4DFFFFFF),
+                GradientDrawable().apply {
+                    setColor(when {
+                        active -> 0xFF697080.toInt()
+                        modifierKey -> 0xFF34363C.toInt()
+                        else -> 0xFF484A50.toInt()
+                    })
+                    cornerRadius = dp(6).toFloat()
+                },
+                null
+            )
+            setOnClickListener { action() }
+        }
+        addView(key, LinearLayout.LayoutParams(0, dp(if (compact) 34 else 44), weight).apply {
+            setMargins(dp(2), dp(2), dp(2), dp(2))
         })
     }
 
@@ -342,4 +410,8 @@ class HiddenNoirKeyboard : InputMethodService() {
         setMargins(dp(2), dp(2), dp(2), dp(2))
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        val KEYBOARD_BACKGROUND = 0xFF202124.toInt()
+    }
 }
