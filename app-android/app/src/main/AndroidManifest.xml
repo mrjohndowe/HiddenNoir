@@ -26,6 +26,16 @@
             <meta-data android:name="android.view.im" android:resource="@xml/hiddennoir_keyboard" />
         </service>
         <service
+            android:name=".ConversationAccess"
+            android:exported="true"
+            android:label="HiddenNoir Read Open Thread"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/hiddennoir_conversation_access" />
+        </service>
+        <service
             android:name=".MessageNotifications"
             android:exported="false"
             android:label="HiddenNoir Message Previews"

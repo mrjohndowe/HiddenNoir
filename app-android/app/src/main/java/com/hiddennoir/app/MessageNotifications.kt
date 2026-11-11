@@ -1,8 +1,10 @@
 package com.hiddennoir.app
 
 import android.app.Notification
+import android.app.Person
 import android.service.notification.NotificationListenerService
 import androidx.core.app.NotificationCompat
+import androidx.core.os.BundleCompat
 
 internal data class MessagePreview(val label: String, val conversation: String)
 
@@ -43,11 +45,19 @@ class MessageNotifications : NotificationListenerService() {
                     val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
                         ?: return@mapNotNull null
                     val messages = style.messages.filter { !it.text.isNullOrBlank() }.takeLast(5)
-                    if (messages.isEmpty()) return@mapNotNull null
-                    val label = style.conversationTitle ?: messages.last().person?.name ?: "Conversation"
+                    val self = BundleCompat.getParcelable(notification.extras, Notification.EXTRA_MESSAGING_PERSON, Person::class.java)
+                    val selfKey = self?.key ?: style.user.key
+                    val selfName = (self?.name ?: style.user.name)?.toString()
+                    fun isIncoming(message: NotificationCompat.MessagingStyle.Message): Boolean {
+                        val sender = message.person ?: return false
+                        if (sender.key != null && selfKey != null) return sender.key != selfKey
+                        return sender.name?.toString() != selfName
+                    }
+                    val newestIncoming = messages.lastOrNull(::isIncoming) ?: return@mapNotNull null
+                    val label = style.conversationTitle ?: newestIncoming.person?.name ?: "Conversation"
                     val conversation = messages.joinToString("\n") { message ->
-                        val sender = message.person?.name ?: "You"
-                        "${sender.toString().take(60)}: ${message.text.toString().takeLast(350)}"
+                        val speaker = if (isIncoming(message)) "Them" else "You"
+                        "$speaker: ${message.text.toString().replace('\n', ' ').takeLast(350)}"
                     }
                     MessagePreview(label.toString().take(80), conversation)
                 }

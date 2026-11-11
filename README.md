@@ -13,8 +13,10 @@ The APK supports Android 9 and newer on ARM64 and x86-64. Choose an unsplit text
 
 ## Reply from the keyboard
 
-In HiddenNoir, tap **Enable keyboard**, turn on HiddenNoir Keyboard in Android settings, and use **Switch keyboard** to select it. **Message preview access** is optional. If enabled, tap **Messages** in the keyboard to choose an active conversation preview from the messaging app you are using. Apps that hide previews or lack message-style notifications can use **Copied** after you copy a message. **Selected** uses the selected text in the compose field.
+In HiddenNoir, tap **Enable keyboard**, turn on HiddenNoir Keyboard in Android settings, and use **Switch keyboard** to select it. The purple row shows the Studio’s active **Relationship**, **Tone**, and **Intensity**. Tap it to open **Direction** in the Studio. The choices highlighted in purple apply to both the Studio and keyboard.
 
-Tap **Generate replies**, then tap a reply to insert it into the compose field. Send it from your messaging app when ready. The keyboard runs the imported GGUF locally, even when the HiddenNoir screen is closed. It reads previews on demand, keeps them in memory while the keyboard is open, and can access only the messages the app exposes in active notifications.
+For Google Messages, tap **Read open thread** in HiddenNoir and enable **HiddenNoir Read Open Thread** in Android Accessibility. Open a thread, focus the compose field, and tap **Thread** on the keyboard. Review the captured messages before generating. The keyboard reads visible text bubbles only when you tap **Thread** and keeps them in memory while the keyboard is open.
+
+**Messages** uses active notification previews if you enable **Message preview access**. **Copied** uses a copied message or transcript. **Selected** uses selected text in the compose field. Tap **Generate replies**, then tap a reply to insert it. Send it from your messaging app when ready. The imported GGUF runs locally while the Studio screen is closed.
 
 See [Build](docs/BUILD.md) and [Windows Control Center](docs/WINDOWS-RUN.md). The separate desktop API supports Ollama for legacy use.

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="hiddennoir_conversation_access_description">Reads visible message bubbles in Google Messages only when you tap Thread in HiddenNoir Keyboard. The conversation stays on this device.</string>
+</resources>

@@ -17,6 +17,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,31 +38,56 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-private val Noir = Color(0xFF0C0A12)
-private val SurfaceNoir = Color(0xFF17121F)
-private val RaisedNoir = Color(0xFF21182D)
-private val Violet = Color(0xFF9B63FF)
-private val Lavender = Color(0xFFD9C4FF)
-private val Muted = Color(0xFFB9B0C5)
+private val Noir = Color(NoirPalette.background)
+private val SurfaceNoir = Color(NoirPalette.surface)
+private val RaisedNoir = Color(NoirPalette.raised)
+private val Violet = Color(NoirPalette.violet)
+private val Lavender = Color(NoirPalette.lavender)
+private val Muted = Color(NoirPalette.muted)
 private val Panel = RoundedCornerShape(24.dp)
+internal const val OPEN_REPLY_DIRECTION = "com.hiddennoir.app.OPEN_REPLY_DIRECTION"
 
 class MainActivity : ComponentActivity() {
     private val viewModel: HiddenNoirViewModel by viewModels()
+    private var directionRequest by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openDirectionIfRequested(intent)
         enableEdgeToEdge()
-        setContent { HiddenNoirTheme { HiddenNoirApp(viewModel) } }
+        setContent { HiddenNoirTheme { HiddenNoirApp(viewModel, directionRequest) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openDirectionIfRequested(intent)
+    }
+
+    private fun openDirectionIfRequested(intent: Intent) {
+        if (intent.getBooleanExtra(OPEN_REPLY_DIRECTION, false)) directionRequest++
     }
 }
 
 @Composable private fun HiddenNoirTheme(content: @Composable () -> Unit) = MaterialTheme(
-    colorScheme = MaterialTheme.colorScheme.copy(primary = Violet, onPrimary = Color.White, surface = SurfaceNoir, onSurface = Color.White, background = Noir, onBackground = Color.White), content = content
+    colorScheme = darkColorScheme(
+        primary = Violet,
+        onPrimary = Noir,
+        secondary = Lavender,
+        background = Noir,
+        onBackground = Color.White,
+        surface = SurfaceNoir,
+        onSurface = Color.White,
+        surfaceVariant = RaisedNoir,
+        onSurfaceVariant = Muted,
+        surfaceContainer = RaisedNoir
+    ),
+    content = content
 )
 
-@Composable private fun HiddenNoirApp(viewModel: HiddenNoirViewModel) {
+@Composable private fun HiddenNoirApp(viewModel: HiddenNoirViewModel, directionRequest: Int) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     Surface(Modifier.fillMaxSize(), color = Noir) {
-        if (state.adultGateAccepted) Studio(viewModel) else AgeGate(viewModel::acceptAdultGate)
+        if (state.adultGateAccepted) Studio(viewModel, directionRequest) else AgeGate(viewModel::acceptAdultGate)
     }
 }
 
@@ -79,10 +107,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun Studio(viewModel: HiddenNoirViewModel) {
+@Composable private fun Studio(viewModel: HiddenNoirViewModel, directionRequest: Int) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     val draft = state.draft
+    val directionCard = remember { BringIntoViewRequester() }
+    var directionPlaced by remember { mutableStateOf(false) }
+    LaunchedEffect(directionRequest, directionPlaced) {
+        if (directionRequest > 0 && directionPlaced) directionCard.bringIntoView()
+    }
     var adultConfirmed by remember(draft.conversation, draft.intensity) { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importModel(uri)
@@ -95,7 +128,7 @@ class MainActivity : ComponentActivity() {
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Section("KEYBOARD")
-                Text("Enable HiddenNoir, then select it in your messaging app. Optional notification access lets you pick a recent message preview.", color = Muted)
+                Text("Enable HiddenNoir, then select it in your messaging app. The keyboard shows the active Relationship, Tone, and Intensity from Direction below.", color = Muted)
                 TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }) {
                     Text("Enable keyboard")
                 }
@@ -105,6 +138,10 @@ class MainActivity : ComponentActivity() {
                 TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) {
                     Text("Message preview access")
                 }
+                TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
+                    Text("Read open thread")
+                }
+                Text("Turn on HiddenNoir Read Open Thread in Accessibility to read visible Google Messages bubbles when you tap Thread.", color = Muted)
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
@@ -141,7 +178,11 @@ class MainActivity : ComponentActivity() {
                 ) { Text("Clear draft") }
             }
         }
-        Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
+        Card(
+            modifier = Modifier.bringIntoViewRequester(directionCard).onGloballyPositioned { directionPlaced = true },
+            colors = CardDefaults.cardColors(containerColor = SurfaceNoir),
+            shape = Panel
+        ) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Section("DIRECTION")
                 ChoiceGroup("Relationship", Relationship.entries, draft.relationship, { it.label }) { viewModel.updateDraft(draft.copy(relationship = it)) }

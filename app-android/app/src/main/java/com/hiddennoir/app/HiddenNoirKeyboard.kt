@@ -1,7 +1,10 @@
 package com.hiddennoir.app
 
 import android.content.ClipboardManager
-import android.graphics.Color
+import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.inputmethodservice.InputMethodService
 import android.text.InputType
 import android.view.View
@@ -32,13 +35,23 @@ class HiddenNoirKeyboard : InputMethodService() {
     private var status: TextView? = null
     private var tools: LinearLayout? = null
     private var keys: LinearLayout? = null
+    private var direction: Button? = null
     private var shifted = false
     private var symbols = false
 
+    override fun onCreate() {
+        setTheme(R.style.Theme_HiddenNoir_Keyboard)
+        super.onCreate()
+    }
+
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
     override fun onCreateInputView(): View = column().apply {
-        setBackgroundColor(Color.rgb(24, 19, 33))
+        setBackgroundColor(NoirPalette.background)
+        setPadding(dp(4), dp(4), dp(4), dp(4))
         val toolbar = LinearLayout(context)
         tools = LinearLayout(context).also { actions ->
+            actions.addView(button("Thread", ::showThread), weighted())
             actions.addView(button("Messages", ::showMessages), weighted())
             actions.addView(button("Copied", ::useClipboard), weighted())
             actions.addView(button("Selected", ::useSelection), weighted())
@@ -48,14 +61,22 @@ class HiddenNoirKeyboard : InputMethodService() {
             getSystemService(InputMethodManager::class.java).showInputMethodPicker()
         })
         addView(toolbar)
+        direction = button("", {
+            startActivity(Intent(this@HiddenNoirKeyboard, MainActivity::class.java)
+                .putExtra(OPEN_REPLY_DIRECTION, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        }, highlighted = true).also { addView(it, LinearLayout.LayoutParams(-1, -2)) }
         status = TextView(context).also {
-            it.setTextColor(Color.WHITE)
+            it.setTextColor(NoirPalette.muted)
             it.maxLines = 3
             it.setPadding(dp(8), 0, dp(8), 0)
             addView(it)
         }
         panel = column().also {
-            val scroll = ScrollView(context).apply { addView(it) }
+            val scroll = ScrollView(context).apply {
+                setBackgroundColor(NoirPalette.surface)
+                addView(it)
+            }
             options = scroll
             addView(scroll, LinearLayout.LayoutParams(-1, dp(124)))
             scroll.visibility = View.GONE
@@ -69,7 +90,9 @@ class HiddenNoirKeyboard : InputMethodService() {
         clearContext()
         val enabled = allowsReplies(info)
         tools?.visibility = if (enabled) View.VISIBLE else View.GONE
-        showStatus(if (enabled) "Choose a message preview or copy a message first." else "")
+        direction?.visibility = if (enabled) View.VISIBLE else View.GONE
+        if (enabled) updateDirection(readDirection())
+        showStatus(if (enabled) "Read the open thread, choose a preview, or use copied text." else "")
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -80,6 +103,28 @@ class HiddenNoirKeyboard : InputMethodService() {
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
+    }
+
+    private fun showThread() {
+        val editor = currentInputEditorInfo ?: return
+        val connection = currentInputConnection ?: return
+        if (!allowsReplies(editor)) return
+        clearContext()
+        showStatus("Reading the open thread…")
+        generation = scope.launch {
+            val thread = try {
+                withContext(Dispatchers.Default) { ConversationAccess.read(editor.packageName) }
+            } catch (_: SecurityException) {
+                ThreadRead.Unavailable
+            }
+            if (currentInputConnection !== connection || !allowsReplies(currentInputEditorInfo)) return@launch
+            generation = null
+            when (thread) {
+                ThreadRead.Disabled -> showStatus("Enable Read open thread in HiddenNoir’s settings first.")
+                ThreadRead.Unavailable -> showStatus("No readable messages in this view. Open a Google Messages thread or use Copied.")
+                is ThreadRead.Readable -> chooseConversation(thread.text)
+            }
+        }
     }
 
     private fun showMessages() {
@@ -93,7 +138,8 @@ class HiddenNoirKeyboard : InputMethodService() {
         }
         showStatus("Choose the preview that matches this conversation.")
         messages.forEach { preview ->
-            addOption("${preview.label}: ${preview.conversation.lineSequence().last().take(75)}") {
+            val latest = preview.conversation.lineSequence().last { it.startsWith("Them: ") }
+            addOption("${preview.label}: ${latest.removePrefix("Them: ").take(75)}") {
                 chooseConversation(preview.conversation)
             }
         }
@@ -121,17 +167,32 @@ class HiddenNoirKeyboard : InputMethodService() {
 
     private fun chooseConversation(text: String) {
         clearContext()
-        val settings = try {
-            preferences.getString("draft", null)?.let { Json.decodeFromString<Draft>(it) } ?: Draft()
-        } catch (_: SerializationException) {
-            Draft()
-        }
-        val input = settings.copy(conversation = text.takeLast(1200), replies = emptyList())
-        showStatus("Replying to: ${input.conversation.lineSequence().last().take(100)}")
+        val settings = readDirection()
+        updateDirection(settings)
+        val input = settings.copy(conversation = text.trim().takeLast(1600), replies = emptyList())
+        showStatus("Review the conversation below before generating.")
         val explicit = input.intensity == Intensity.EXPLICIT
         addOption(if (explicit) "Everyone is 18+ · Generate replies" else "Generate replies") {
             generate(input, explicit)
         }
+        panel?.addView(TextView(this).apply {
+            this.text = input.conversation
+            setTextColor(NoirPalette.lavender)
+            setPadding(dp(8), dp(4), dp(8), dp(8))
+            textSize = 14f
+        })
+    }
+
+    private fun readDirection(): Draft = try {
+        preferences.getString("draft", null)?.let { Json.decodeFromString<Draft>(it) } ?: Draft()
+    } catch (_: SerializationException) {
+        Draft()
+    }
+
+    private fun updateDirection(settings: Draft) {
+        direction?.text = "${settings.relationship.label} · ${settings.tone.label} · ${settings.intensity.label}"
+        direction?.contentDescription = "Studio reply settings. Relationship: ${settings.relationship.label}. " +
+            "Tone: ${settings.tone.label}. Intensity: ${settings.intensity.label}. Tap to edit in HiddenNoir."
     }
 
     private fun generate(input: Draft, adultsConfirmed: Boolean) {
@@ -187,11 +248,12 @@ class HiddenNoirKeyboard : InputMethodService() {
 
     private fun clearOptions() {
         panel?.removeAllViews()
+        options?.scrollTo(0, 0)
         options?.visibility = View.GONE
     }
 
     private fun addOption(label: String, action: () -> Unit) {
-        panel?.addView(button(label, action))
+        panel?.addView(button(label, action, highlighted = true))
         options?.visibility = View.VISIBLE
     }
 
@@ -239,15 +301,32 @@ class HiddenNoirKeyboard : InputMethodService() {
 
     private fun column() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-    private fun button(label: String, action: () -> Unit) = Button(this).apply {
+    private fun button(label: String, action: () -> Unit) = button(label, action, highlighted = false)
+
+    private fun button(label: String, action: () -> Unit, highlighted: Boolean) = Button(this).apply {
         text = label
         isAllCaps = false
         minWidth = 0
         minimumWidth = 0
-        setPadding(dp(2), 0, dp(2), 0)
+        minHeight = dp(40)
+        minimumHeight = dp(40)
+        setTextColor(NoirPalette.lavender)
+        textSize = 13f
+        setPadding(dp(3), dp(2), dp(3), dp(2))
+        background = RippleDrawable(
+            ColorStateList.valueOf(NoirPalette.violet),
+            GradientDrawable().apply {
+                setColor(if (highlighted) NoirPalette.raised else NoirPalette.surface)
+                setStroke(dp(1), if (highlighted) NoirPalette.violet else NoirPalette.border)
+                cornerRadius = dp(8).toFloat()
+            },
+            null
+        )
         setOnClickListener { action() }
     }
 
-    private fun weighted(weight: Float = 1f) = LinearLayout.LayoutParams(0, -2, weight)
+    private fun weighted(weight: Float = 1f) = LinearLayout.LayoutParams(0, -2, weight).apply {
+        setMargins(dp(2), dp(2), dp(2), dp(2))
+    }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
