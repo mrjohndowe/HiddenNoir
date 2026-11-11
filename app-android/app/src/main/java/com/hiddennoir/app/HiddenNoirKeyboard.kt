@@ -7,6 +7,8 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.inputmethodservice.InputMethodService
 import android.text.InputType
+import android.text.SpannableString
+import android.text.style.ImageSpan
 import android.view.Gravity
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -75,6 +77,7 @@ class HiddenNoirKeyboard : InputMethodService() {
         }, highlighted = true).also { addView(it, LinearLayout.LayoutParams(-1, -2)) }
         status = TextView(context).also {
             it.setTextColor(NoirPalette.muted)
+            it.textSize = 12f
             it.maxLines = 3
             it.setPadding(dp(8), 0, dp(8), 0)
             addView(it)
@@ -99,6 +102,7 @@ class HiddenNoirKeyboard : InputMethodService() {
         tools?.visibility = if (enabled) View.VISIBLE else View.GONE
         direction?.visibility = if (enabled) View.VISIBLE else View.GONE
         if (enabled) updateDirection(readDirection())
+        renderKeys()
         showStatus(if (enabled) "Read the open thread, choose a preview, or use copied text." else "")
     }
 
@@ -283,22 +287,22 @@ class HiddenNoirKeyboard : InputMethodService() {
             if (symbols) {
                 "_=~<>[]".forEach { character -> addCharacter(character.toString()) }
             } else {
-                addKey("⇧", description = if (shifted) "Shift on" else "Shift", weight = 1.5f,
-                    modifierKey = true, active = shifted) {
+                addKey("", description = if (shifted) "Shift on" else "Shift", weight = 1.5f,
+                    active = shifted, icon = R.drawable.ic_keyboard_shift) {
                     shifted = !shifted
                     renderKeys()
                 }
                 "zxcvbnm".forEach { character -> addCharacter(character.toString()) }
             }
-            addKey("⌫", description = "Backspace", weight = 1.5f, modifierKey = true, action = ::backspace)
+            addKey("", description = "Backspace", weight = 1.5f, icon = R.drawable.ic_keyboard_backspace, action = ::backspace)
         })
         layout.addView(keyRow().apply {
-            addKey(if (symbols) "ABC" else "!#1", weight = 1.3f, modifierKey = true) {
+            addKey(if (symbols) "ABC" else "!#1", weight = 1.3f) {
                 symbols = !symbols
                 shifted = false
                 renderKeys()
             }
-            addKey("🌐", description = "Switch keyboard", modifierKey = true) {
+            addKey("", description = "Switch keyboard", icon = R.drawable.ic_keyboard_globe) {
                 getSystemService(InputMethodManager::class.java).showInputMethodPicker()
             }
             addKey(",") { currentInputConnection?.commitText(",", 1) }
@@ -306,8 +310,15 @@ class HiddenNoirKeyboard : InputMethodService() {
                 currentInputConnection?.commitText(" ", 1)
             }
             addKey(".") { currentInputConnection?.commitText(".", 1) }
-            addKey("↵", description = "Enter · New line", weight = 1.4f, modifierKey = true) {
-                currentInputConnection?.commitText("\n", 1)
+            if (currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) == EditorInfo.IME_ACTION_SEARCH &&
+                currentInputEditorInfo?.imeOptions?.and(EditorInfo.IME_FLAG_NO_ENTER_ACTION) == 0) {
+                addKey("", description = "Search", weight = 1.55f, icon = R.drawable.ic_keyboard_search) {
+                    currentInputConnection?.performEditorAction(EditorInfo.IME_ACTION_SEARCH)
+                }
+            } else {
+                addKey("", description = "Enter · New line", weight = 1.55f, icon = R.drawable.ic_keyboard_enter) {
+                    currentInputConnection?.commitText("\n", 1)
+                }
             }
         })
     }
@@ -336,13 +347,17 @@ class HiddenNoirKeyboard : InputMethodService() {
         label: String,
         description: String? = null,
         weight: Float = 1f,
-        modifierKey: Boolean = false,
         active: Boolean = false,
         compact: Boolean = false,
+        icon: Int? = null,
         action: () -> Unit
     ) {
         val key = Button(context).apply {
-            text = label
+            text = if (icon == null) label else SpannableString(" ").apply {
+                val drawable = requireNotNull(context.getDrawable(icon))
+                drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+                setSpan(ImageSpan(drawable, ImageSpan.ALIGN_BASELINE), 0, length, 0)
+            }
             contentDescription = description
             isAllCaps = false
             minimumWidth = 0
@@ -351,26 +366,25 @@ class HiddenNoirKeyboard : InputMethodService() {
             minHeight = 0
             setPadding(0, 0, 0, 0)
             setSingleLine()
-            setTextColor(0xFFF5F5F7.toInt())
-            textSize = if (compact || label.length > 2) 14f else 20f
-            elevation = dp(1).toFloat()
+            setTextColor(NoirPalette.violet)
+            textSize = if (description == "Space") 13f else if (compact) 19f else 22f
             stateListAnimator = null
             background = RippleDrawable(
-                ColorStateList.valueOf(0x4DFFFFFF),
+                ColorStateList.valueOf(0x409B63FF),
                 GradientDrawable().apply {
                     setColor(when {
-                        active -> 0xFF697080.toInt()
-                        modifierKey -> 0xFF34363C.toInt()
-                        else -> 0xFF484A50.toInt()
+                        active -> NoirPalette.raised
+                        else -> KEY_FILL
                     })
-                    cornerRadius = dp(6).toFloat()
+                    setStroke(dp(1.5f), NoirPalette.violet)
+                    cornerRadius = dp(7).toFloat()
                 },
                 null
             )
             setOnClickListener { action() }
         }
-        addView(key, LinearLayout.LayoutParams(0, dp(if (compact) 34 else 44), weight).apply {
-            setMargins(dp(2), dp(2), dp(2), dp(2))
+        addView(key, LinearLayout.LayoutParams(0, dp(if (compact) 34 else 40), weight).apply {
+            setMargins(dp(1.5f), dp(3.5f), dp(1.5f), dp(3.5f))
         })
     }
 
@@ -391,14 +405,14 @@ class HiddenNoirKeyboard : InputMethodService() {
         minimumWidth = 0
         minHeight = dp(40)
         minimumHeight = dp(40)
-        setTextColor(NoirPalette.lavender)
-        textSize = 13f
+        setTextColor(if (highlighted) NoirPalette.lavender else NoirPalette.violet)
+        textSize = 12f
         setPadding(dp(3), dp(2), dp(3), dp(2))
         background = RippleDrawable(
             ColorStateList.valueOf(NoirPalette.violet),
             GradientDrawable().apply {
-                setColor(if (highlighted) NoirPalette.raised else NoirPalette.surface)
-                setStroke(dp(1), if (highlighted) NoirPalette.violet else NoirPalette.border)
+                setColor(if (highlighted) KEYBOARD_BACKGROUND else TOOLBAR_FILL)
+                setStroke(dp(0.7f).coerceAtLeast(1), NoirPalette.violet)
                 cornerRadius = dp(8).toFloat()
             },
             null
@@ -410,8 +424,11 @@ class HiddenNoirKeyboard : InputMethodService() {
         setMargins(dp(2), dp(2), dp(2), dp(2))
     }
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Float) = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
-        val KEYBOARD_BACKGROUND = 0xFF202124.toInt()
+        val KEYBOARD_BACKGROUND = 0xFF21182D.toInt()
+        val KEY_FILL = 0xFF280A30.toInt()
+        val TOOLBAR_FILL = 0xFF17121F.toInt()
     }
 }
