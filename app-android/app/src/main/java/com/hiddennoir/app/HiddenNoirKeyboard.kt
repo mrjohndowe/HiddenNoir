@@ -14,6 +14,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,7 +50,14 @@ class HiddenNoirKeyboard : InputMethodService() {
 
     override fun onCreateInputView(): View = column().apply {
         setBackgroundColor(NoirPalette.background)
-        setPadding(dp(4), dp(4), dp(4), dp(4))
+        val edgePadding = dp(4)
+        val minimumBottomClearance = dp(44)
+        setPadding(edgePadding, edgePadding, edgePadding, minimumBottomClearance)
+        ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+            val navigation = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            view.setPadding(edgePadding, edgePadding, edgePadding, maxOf(minimumBottomClearance, navigation + edgePadding))
+            insets
+        }
         val toolbar = LinearLayout(context)
         tools = LinearLayout(context).also { actions ->
             actions.addView(button("Thread", ::showThread), weighted())
@@ -211,8 +220,12 @@ class HiddenNoirKeyboard : InputMethodService() {
                 showStatus("Tap a reply to insert it.")
                 replies.forEach { reply ->
                     addOption(reply) {
-                        if (currentInputConnection === connection && allowsReplies(currentInputEditorInfo) &&
-                            connection.commitText(reply, 1)) {
+                        if (currentInputConnection !== connection || !allowsReplies(currentInputEditorInfo)) return@addOption
+                        // Text outside the selection would turn this reply into part of an existing draft.
+                        if (connection.getTextBeforeCursor(1, 0)?.isEmpty() != true ||
+                            connection.getTextAfterCursor(1, 0)?.isEmpty() != true) {
+                            showStatus("Clear the compose field or select the whole draft, then tap a reply.")
+                        } else if (connection.commitText(reply, 1)) {
                             clearContext()
                             showStatus("Reply inserted.")
                         }
