@@ -3,7 +3,10 @@ package com.hiddennoir.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
@@ -89,6 +92,21 @@ class MainActivity : ComponentActivity() {
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         BrandHeader(true)
+        Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Section("KEYBOARD")
+                Text("Enable HiddenNoir, then select it in your messaging app. Optional notification access lets you pick a recent message preview.", color = Muted)
+                TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }) {
+                    Text("Enable keyboard")
+                }
+                TextButton(onClick = { context.getSystemService(InputMethodManager::class.java).showInputMethodPicker() }) {
+                    Text("Switch keyboard")
+                }
+                TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }) {
+                    Text("Message preview access")
+                }
+            }
+        }
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Section("ON-DEVICE MODEL")

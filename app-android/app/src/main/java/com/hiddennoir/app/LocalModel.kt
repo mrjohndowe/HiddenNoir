@@ -52,7 +52,7 @@ internal class LocalModel(private val context: Context) {
                     output.fd.sync()
                 }
             }
-            NativeInference.validate(pending.absolutePath.encodeToByteArray())
+            inferenceLock.withLock { NativeInference.validate(pending.absolutePath.encodeToByteArray()) }
             operation.ensureActive()
             // Same filesystem, so a failed import leaves the previous model intact.
             Os.rename(pending.absolutePath, model.absolutePath)
@@ -62,7 +62,7 @@ internal class LocalModel(private val context: Context) {
         }
     }
 
-    fun generate(draft: Draft, adultConfirmed: Boolean): List<String> {
+    suspend fun generate(draft: Draft, adultConfirmed: Boolean): List<String> {
         require(draft.conversation.isNotBlank()) { "Paste the conversation first." }
         if (draft.intensity == Intensity.EXPLICIT) {
             require(adultConfirmed) { "Confirm everyone represented is 18 or older." }
@@ -82,10 +82,12 @@ internal class LocalModel(private val context: Context) {
             Conversation:
             ${draft.conversation.trim()}
         """.trimIndent()
-        val response = NativeInference.generate(
-            model.absolutePath.encodeToByteArray(),
-            prompt.encodeToByteArray()
-        ).decodeToString()
+        val response = inferenceLock.withLock {
+            NativeInference.generate(
+                model.absolutePath.encodeToByteArray(),
+                prompt.encodeToByteArray()
+            ).decodeToString()
+        }
         val replies = try {
             Json.decodeFromString<ModelReplyEnvelope>(response).replies
                 .map { it.replace('–', ',').replace('—', ',').trim() }
@@ -100,6 +102,7 @@ internal class LocalModel(private val context: Context) {
 
     private companion object {
         val importLock = Mutex()
+        val inferenceLock = Mutex()
         val minorCue = Regex("""(?i)\b1[0-7]\s*(?:years?\s*old|yo|y/o)\b|\bunderage\b|\ba minor\b""")
     }
 }
