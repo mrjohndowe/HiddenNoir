@@ -9,6 +9,6 @@ HiddenNoir is an 18+ Android reply studio. It runs llama.cpp directly on the dev
 3. Select the file. The app validates it and copies it into private storage. Allow space for both copies during setup. After import succeeds, you can remove the original from Downloads.
 4. Paste messages, choose a direction, and tap **Generate replies**. With the GGUF already on the phone, import and generation can run in airplane mode.
 
-The APK supports Android 9 and newer on ARM64 and x86-64. Choose an unsplit text GGUF with a chat template supported by llama.cpp. Start with a small non-reasoning model. Larger models need more memory and can be slow.
+The APK supports Android 9 and newer on ARM64 and x86-64. Choose an unsplit text GGUF with a chat template supported by llama.cpp. If the GGUF lacks a template and uses the standard Llama 3 chat tokens, HiddenNoir applies the Llama 3 template. Start with a small non-reasoning model. Larger models need more memory and can be slow.
 
 See [Build](docs/BUILD.md) and [Windows Control Center](docs/WINDOWS-RUN.md). The separate desktop API supports Ollama for legacy use.

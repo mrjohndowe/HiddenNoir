@@ -41,8 +41,19 @@ auto load_model(const std::string & path) {
 
 std::string format_prompt(const llama_model * model, const std::string & prompt) {
     const char * chat_template = llama_model_chat_template(model, nullptr);
-    if (!chat_template) {
-        throw std::runtime_error("Choose an instruct GGUF model with an embedded chat template.");
+    if (!chat_template || !*chat_template) {
+        // Some Llama 3 fine-tunes omit tokenizer.chat_template from their GGUF.
+        // Recognize the actual token layout before selecting its standard format.
+        const auto * vocab = llama_model_get_vocab(model);
+        if (llama_vocab_n_tokens(vocab) > 128009 &&
+            std::strcmp(llama_vocab_get_text(vocab, 128000), "<|begin_of_text|>") == 0 &&
+            std::strcmp(llama_vocab_get_text(vocab, 128006), "<|start_header_id|>") == 0 &&
+            std::strcmp(llama_vocab_get_text(vocab, 128007), "<|end_header_id|>") == 0 &&
+            std::strcmp(llama_vocab_get_text(vocab, 128009), "<|eot_id|>") == 0) {
+            chat_template = "llama3";
+        } else {
+            throw std::runtime_error("Choose an instruct GGUF model with an embedded chat template.");
+        }
     }
     const llama_chat_message message{"user", prompt.c_str()};
     std::vector<char> buffer(prompt.size() + 1024);
