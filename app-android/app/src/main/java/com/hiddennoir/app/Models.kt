@@ -20,7 +20,7 @@ enum class Tone(val label: String, val direction: String) {
 enum class Intensity(val label: String, val direction: String) {
     FLIRTY("Flirty", "light and charming, with no sexual details"),
     SUGGESTIVE("Suggestive", "mature innuendo without graphic detail"),
-    EXPLICIT("Explicit", "direct and respectful adult intimacy")
+    EXPLICIT("Explicit", "graphic, vulgar dirty talk when the conversation clearly invites it")
 }
 
 @Serializable
