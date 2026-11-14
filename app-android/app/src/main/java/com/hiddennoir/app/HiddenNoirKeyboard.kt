@@ -55,10 +55,11 @@ class HiddenNoirKeyboard : InputMethodService() {
         setBackgroundColor(KEYBOARD_BACKGROUND)
         val edgePadding = dp(4)
         val minimumBottomClearance = dp(44)
-        setPadding(edgePadding, edgePadding, edgePadding, minimumBottomClearance)
+        val topPadding = referencePixels(17)
+        setPadding(edgePadding, topPadding, edgePadding, minimumBottomClearance)
         ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
             val navigation = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
-            view.setPadding(edgePadding, edgePadding, edgePadding, maxOf(minimumBottomClearance, navigation + edgePadding))
+            view.setPadding(edgePadding, topPadding, edgePadding, maxOf(minimumBottomClearance, navigation + edgePadding))
             insets
         }
         val toolbar = LinearLayout(context)
@@ -67,17 +68,19 @@ class HiddenNoirKeyboard : InputMethodService() {
             actions.addView(button("Messages", ::showMessages), weighted())
             actions.addView(button("Copied", ::useClipboard), weighted())
             actions.addView(button("Selected", ::useSelection), weighted())
-            toolbar.addView(actions, weighted())
+            toolbar.addView(actions, LinearLayout.LayoutParams(-1, -2).apply {
+                setMargins(referencePixels(7), 0, referencePixels(7), referencePixels(8))
+            })
         }
         addView(toolbar)
         direction = button("", {
             startActivity(Intent(this@HiddenNoirKeyboard, MainActivity::class.java)
                 .putExtra(OPEN_REPLY_DIRECTION, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        }, highlighted = true).also { addView(it, LinearLayout.LayoutParams(-1, -2)) }
+        }, highlighted = true).also { addView(it, LinearLayout.LayoutParams(-1, referencePixels(139))) }
         status = TextView(context).also {
             it.setTextColor(NoirPalette.muted)
-            it.textSize = 12f
+            it.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, referencePixels(36).toFloat())
             it.maxLines = 3
             it.setPadding(dp(8), 0, dp(8), 0)
             addView(it)
@@ -367,7 +370,8 @@ class HiddenNoirKeyboard : InputMethodService() {
             setPadding(0, 0, 0, 0)
             setSingleLine()
             setTextColor(NoirPalette.violet)
-            textSize = if (description == "Space") 13f else if (compact) 19f else 22f
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,
+                referencePixels(if (description == "Space") 36 else if (compact) 57 else 62).toFloat())
             stateListAnimator = null
             background = RippleDrawable(
                 ColorStateList.valueOf(0x409B63FF),
@@ -376,15 +380,15 @@ class HiddenNoirKeyboard : InputMethodService() {
                         active -> NoirPalette.raised
                         else -> KEY_FILL
                     })
-                    setStroke(dp(1.5f), NoirPalette.violet)
-                    cornerRadius = dp(7).toFloat()
+                    setStroke(referencePixels(5), NoirPalette.violet)
+                    cornerRadius = referencePixels(24).toFloat()
                 },
                 null
             )
             setOnClickListener { action() }
         }
-        addView(key, LinearLayout.LayoutParams(0, dp(if (compact) 34 else 40), weight).apply {
-            setMargins(dp(1.5f), dp(3.5f), dp(1.5f), dp(3.5f))
+        addView(key, LinearLayout.LayoutParams(0, referencePixels(if (compact) 118 else 140), weight).apply {
+            setMargins(referencePixels(5), referencePixels(12), referencePixels(5), referencePixels(12))
         })
     }
 
@@ -406,25 +410,27 @@ class HiddenNoirKeyboard : InputMethodService() {
         minHeight = dp(40)
         minimumHeight = dp(40)
         setTextColor(if (highlighted) NoirPalette.lavender else NoirPalette.violet)
-        textSize = 12f
+        setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, referencePixels(36).toFloat())
         setPadding(dp(3), dp(2), dp(3), dp(2))
         background = RippleDrawable(
             ColorStateList.valueOf(NoirPalette.violet),
             GradientDrawable().apply {
                 setColor(if (highlighted) KEYBOARD_BACKGROUND else TOOLBAR_FILL)
-                setStroke(dp(0.7f).coerceAtLeast(1), NoirPalette.violet)
-                cornerRadius = dp(8).toFloat()
+                setStroke(referencePixels(2), NoirPalette.violet)
+                cornerRadius = referencePixels(28).toFloat()
             },
             null
         )
         setOnClickListener { action() }
     }
 
-    private fun weighted(weight: Float = 1f) = LinearLayout.LayoutParams(0, -2, weight).apply {
-        setMargins(dp(2), dp(2), dp(2), dp(2))
+    private fun weighted(weight: Float = 1f) = LinearLayout.LayoutParams(0, referencePixels(140), weight).apply {
+        setMargins(referencePixels(7), referencePixels(7), referencePixels(7), referencePixels(7))
     }
+    private fun referencePixels(pixels: Int): Int =
+        (resources.displayMetrics.run { minOf(widthPixels, heightPixels) } * pixels / 1440f)
+            .toInt().coerceAtLeast(1)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-    private fun dp(value: Float) = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
         val KEYBOARD_BACKGROUND = 0xFF21182D.toInt()
