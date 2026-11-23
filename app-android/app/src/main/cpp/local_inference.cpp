@@ -68,17 +68,18 @@ std::string format_prompt(const llama_model * model, const std::string & prompt)
     return {buffer.data(), static_cast<size_t>(size)};
 }
 
-std::string generate(const llama_model * model, const std::string & prompt) {
+std::string generate(const llama_model * model, const std::string & prompt, bool review) {
     const auto formatted = format_prompt(model, prompt);
     const auto * vocab = llama_model_get_vocab(model);
     auto params = llama_context_default_params();
-    params.n_ctx = std::min(context_size, llama_model_n_ctx_train(model));
+    params.n_ctx = std::min(review ? 4096 : context_size, llama_model_n_ctx_train(model));
     params.n_batch = batch_size;
     params.n_ubatch = batch_size;
     params.n_threads = std::clamp(std::thread::hardware_concurrency(), 1u, 4u);
     params.n_threads_batch = params.n_threads;
 
-    const int available = static_cast<int>(params.n_ctx) - max_reply_tokens;
+    const int output_tokens = review ? 1536 : max_reply_tokens;
+    const int available = static_cast<int>(params.n_ctx) - output_tokens;
     if (available <= 0) {
         throw std::runtime_error("This model's context is too small for HiddenNoir.");
     }
@@ -112,7 +113,13 @@ ws ::= [ \t\n\r]{0,4}
 string ::= "\"" char{1,120} "\""
 char ::= [^"\\\x00-\x1F] | "\\" ["\\/bfnrt]
 )";
-    auto * constraint = llama_sampler_init_grammar(vocab, grammar, "root");
+    constexpr auto review_grammar = R"(
+root ::= "{" ws "\"replies\"" ws ":" ws "[" ws string (ws "," ws string){3} ws "]" ws "}"
+ws ::= [ \t\n\r]{0,4}
+string ::= "\"" char+ "\""
+char ::= [^"\\\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
+)";
+    auto * constraint = llama_sampler_init_grammar(vocab, review ? review_grammar : grammar, "root");
     if (!constraint) {
         throw std::runtime_error("Could not initialize structured reply generation.");
     }
@@ -126,9 +133,13 @@ char ::= [^"\\\x00-\x1F] | "\\" ["\\/bfnrt]
 
     std::string output;
     std::vector<char> piece(256);
-    for (int i = 0; i < max_reply_tokens; ++i) {
+    bool completed = false;
+    for (int i = 0; i < output_tokens; ++i) {
         llama_token token = llama_sampler_sample(sampler.get(), context.get(), -1);
-        if (llama_vocab_is_eog(vocab, token)) break;
+        if (llama_vocab_is_eog(vocab, token)) {
+            completed = true;
+            break;
+        }
         int length = llama_token_to_piece(vocab, token, piece.data(), piece.size(), 0, false);
         if (length < 0) {
             piece.resize(-length);
@@ -138,6 +149,9 @@ char ::= [^"\\\x00-\x1F] | "\\" ["\\/bfnrt]
         if (llama_decode(context.get(), llama_batch_get_one(&token, 1)) != 0) {
             throw std::runtime_error("The model stopped while generating a reply.");
         }
+    }
+    if (review && !completed) {
+        throw std::runtime_error("The review exceeded the model's output budget. Shorten the draft and try again.");
     }
     return output;
 }
@@ -161,10 +175,10 @@ Java_com_hiddennoir_app_NativeInference_validate(JNIEnv * env, jobject, jbyteArr
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_hiddennoir_app_NativeInference_generate(JNIEnv * env, jobject, jbyteArray path, jbyteArray prompt) {
+Java_com_hiddennoir_app_NativeInference_generate(JNIEnv * env, jobject, jbyteArray path, jbyteArray prompt, jboolean review) {
     try {
         const auto model = load_model(read_bytes(env, path));
-        const auto output = generate(model.get(), read_bytes(env, prompt));
+        const auto output = generate(model.get(), read_bytes(env, prompt), review == JNI_TRUE);
         const auto bytes = env->NewByteArray(static_cast<jsize>(output.size()));
         if (bytes) {
             env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(output.size()),

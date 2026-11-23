@@ -121,7 +121,9 @@ class MainActivity : ComponentActivity() {
         if (uri != null) viewModel.importModel(uri)
     }
     Column(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF160E22), Noir, Noir))).windowInsetsPadding(WindowInsets.statusBars).verticalScroll(rememberScrollState()).padding(20.dp),
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF160E22), Noir, Noir)))
+            .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()
+            .verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         BrandHeader(true)
