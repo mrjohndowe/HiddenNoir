@@ -114,7 +114,7 @@ string ::= "\"" char{1,120} "\""
 char ::= [^"\\\x00-\x1F] | "\\" ["\\/bfnrt]
 )";
     constexpr auto review_grammar = R"(
-root ::= "{" ws "\"replies\"" ws ":" ws "[" ws string (ws "," ws string){3} ws "]" ws "}"
+root ::= "{" ws "\"rewrite\"" ws ":" ws string ws "," ws "\"assessment\"" ws ":" ws string ws "," ws "\"issue\"" ws ":" ws string ws "," ws "\"reason\"" ws ":" ws string ws "}"
 ws ::= [ \t\n\r]{0,4}
 string ::= "\"" char+ "\""
 char ::= [^"\\\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})

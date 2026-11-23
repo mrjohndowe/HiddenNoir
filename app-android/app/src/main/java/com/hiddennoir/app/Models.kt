@@ -41,3 +41,11 @@ data class TextReview(
     val context: String = "",
     val feedback: List<String> = emptyList()
 )
+
+@Serializable
+internal data class ReviewResponse(
+    val rewrite: String,
+    val assessment: String,
+    val issue: String,
+    val reason: String
+)
