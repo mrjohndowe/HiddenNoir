@@ -34,3 +34,10 @@ data class Draft(
 
 @Serializable
 data class ModelReplyEnvelope(val replies: List<String>)
+
+@Serializable
+data class TextReview(
+    val message: String = "",
+    val context: String = "",
+    val feedback: List<String> = emptyList()
+)

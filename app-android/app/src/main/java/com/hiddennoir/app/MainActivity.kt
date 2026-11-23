@@ -125,6 +125,17 @@ class MainActivity : ComponentActivity() {
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         BrandHeader(true)
+        var reviewing by remember { mutableStateOf(false) }
+        LaunchedEffect(directionRequest) {
+            if (directionRequest > 0) reviewing = false
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FilterChip(selected = !reviewing, onClick = { reviewing = false }, label = { Text("Reply studio") })
+            FilterChip(selected = reviewing, onClick = { reviewing = true }, label = { Text("Fix my text") })
+        }
+        if (reviewing) {
+            TextReviewPanel(viewModel)
+        } else {
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Section("KEYBOARD")
@@ -201,6 +212,51 @@ class MainActivity : ComponentActivity() {
         if (draft.replies.isNotEmpty()) Section("YOUR OPTIONS")
         draft.replies.forEachIndexed { index, reply -> ReplyCard(index + 1, reply) { copy(context, reply) } }
         Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable private fun TextReviewPanel(viewModel: HiddenNoirViewModel) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val review = state.review
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Before you send it", fontSize = 21.sp, fontWeight = FontWeight.SemiBold)
+            Text("Get feedback on your wording and a rewrite that keeps your meaning. Reviews are saved on this device.", color = Muted)
+            OutlinedTextField(
+                value = review.message,
+                onValueChange = { viewModel.updateReview(review.copy(message = it)) },
+                label = { Text("Your draft message") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+            OutlinedTextField(
+                value = review.context,
+                onValueChange = { viewModel.updateReview(review.copy(context = it)) },
+                label = { Text("Conversation context (optional)") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+            TextButton(onClick = { viewModel.updateReview(TextReview()) }) { Text("Clear review") }
+            if (state.model == null) Text("Import a model in Reply studio first.", color = Muted)
+            PrimaryButton(
+                if (state.loading) "Reviewing…" else "Review my text",
+                viewModel::reviewMessage,
+                !state.loading && !state.importing && state.model != null && review.message.isNotBlank()
+            )
+        }
+    }
+    state.error?.let { Text(it, color = Color(0xFFFFB4AB)) }
+    val labels = listOf("How it comes across", "What to watch", "Suggested rewrite", "Why it helps")
+    review.feedback.forEachIndexed { index, text ->
+        Card(colors = CardDefaults.cardColors(containerColor = RaisedNoir), shape = Panel) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(labels.getOrElse(index) { "Feedback" }, color = Lavender, fontWeight = FontWeight.Bold)
+                Text(text, fontSize = 17.sp)
+                if (index == 2) TextButton(onClick = { copy(context, text) }) { Text("Copy rewrite") }
+            }
+        }
     }
 }
 

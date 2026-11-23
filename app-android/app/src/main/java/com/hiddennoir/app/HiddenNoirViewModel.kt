@@ -18,6 +18,7 @@ data class HiddenNoirUiState(
     val importing: Boolean = false,
     val loading: Boolean = false,
     val draft: Draft = Draft(),
+    val review: TextReview = TextReview(),
     val model: String? = null,
     val modelError: String? = null,
     val error: String? = null
@@ -29,6 +30,9 @@ class HiddenNoirViewModel(application: Application) : AndroidViewModel(applicati
     private val _uiState = MutableStateFlow(
         HiddenNoirUiState(
             adultGateAccepted = preferences.getBoolean("adult_gate", false),
+            review = try {
+                preferences.getString("text_review", null)?.let { Json.decodeFromString<TextReview>(it) } ?: TextReview()
+            } catch (_: SerializationException) { TextReview() },
             model = if (localModel.isInstalled()) preferences.getString("model", "Local GGUF") else null,
             draft = try {
                 preferences.getString("draft", null)?.let { Json.decodeFromString<Draft>(it) } ?: Draft()
@@ -46,6 +50,35 @@ class HiddenNoirViewModel(application: Application) : AndroidViewModel(applicati
 
     fun updateDraft(draft: Draft) {
         saveDraft(draft.copy(replies = emptyList()))
+    }
+
+    fun updateReview(review: TextReview) {
+        saveReview(review.copy(feedback = emptyList()))
+    }
+
+    private fun saveReview(review: TextReview) {
+        preferences.edit().putString("text_review", Json.encodeToString(review)).apply()
+        _uiState.value = _uiState.value.copy(review = review, error = null)
+    }
+
+    fun reviewMessage() {
+        val state = _uiState.value
+        if (state.loading || state.importing || state.model == null || !state.adultGateAccepted) return
+        _uiState.value = state.copy(loading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val feedback = withContext(Dispatchers.Default) { localModel.review(state.review) }
+                if (_uiState.value.review == state.review) saveReview(state.review.copy(feedback = feedback))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                showError(failure.message ?: "Could not review this message.")
+            } catch (_: LinkageError) {
+                showError("This device could not load the local inference engine.")
+            } finally {
+                _uiState.value = _uiState.value.copy(loading = false)
+            }
+        }
     }
 
     fun importModel(uri: Uri) {
