@@ -153,9 +153,9 @@ class MainActivity : ComponentActivity() {
                     Text("Message preview access")
                 }
                 TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
-                    Text("Read open thread")
+                    Text("Read screen access")
                 }
-                Text("Turn on HiddenNoir Read Open Thread in Accessibility to read visible Google Messages bubbles when you tap Thread.", color = Muted)
+                Text("Turn on HiddenNoir Read Screen in Accessibility. Screen reads the visible app. Read image text recognizes text from a screenshot of that app on your device.", color = Muted)
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {

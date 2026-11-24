@@ -64,7 +64,7 @@ class HiddenNoirKeyboard : InputMethodService() {
         }
         val toolbar = LinearLayout(context)
         tools = LinearLayout(context).also { actions ->
-            actions.addView(button("Thread", ::showThread), weighted())
+            actions.addView(button("Screen") { showScreen() }, weighted())
             actions.addView(button("Messages", ::showMessages), weighted())
             actions.addView(button("Copied", ::useClipboard), weighted())
             actions.addView(button("Selected", ::useSelection), weighted())
@@ -106,7 +106,7 @@ class HiddenNoirKeyboard : InputMethodService() {
         direction?.visibility = if (enabled) View.VISIBLE else View.GONE
         if (enabled) updateDirection(readDirection())
         renderKeys()
-        showStatus(if (enabled) "Read the open thread, choose a preview, or use copied text." else "")
+        showStatus(if (enabled) "Read the screen, choose a preview, or use copied text." else "")
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -119,24 +119,38 @@ class HiddenNoirKeyboard : InputMethodService() {
         super.onDestroy()
     }
 
-    private fun showThread() {
+    private fun showScreen(imageText: Boolean = false) {
         val editor = currentInputEditorInfo ?: return
         val connection = currentInputConnection ?: return
         if (!allowsReplies(editor)) return
         clearContext()
-        showStatus("Reading the open thread…")
+        showStatus(if (imageText) "Reading image text on this device…" else "Reading the visible screen…")
         generation = scope.launch {
-            val thread = try {
-                withContext(Dispatchers.Default) { ConversationAccess.read(editor.packageName) }
-            } catch (_: SecurityException) {
-                ThreadRead.Unavailable
-            }
-            if (currentInputConnection !== connection || !allowsReplies(currentInputEditorInfo)) return@launch
-            generation = null
-            when (thread) {
-                ThreadRead.Disabled -> showStatus("Enable Read open thread in HiddenNoir’s settings first.")
-                ThreadRead.Unavailable -> showStatus("No readable messages in this view. Open a Google Messages thread or use Copied.")
-                is ThreadRead.Readable -> chooseConversation(thread.text)
+            try {
+                val screen = withContext(Dispatchers.Default) {
+                    ConversationAccess.readScreen(editor.packageName, imageText)
+                }
+                if (currentInputConnection !== connection || !allowsReplies(currentInputEditorInfo)) return@launch
+                generation = null
+                val conversation = screen.conversation
+                if (conversation != null) {
+                    chooseConversation(conversation)
+                } else {
+                    showStatus("Choose the text you want to answer. Speaker roles are unknown on this screen.")
+                    val context = screen.blocks.joinToString("\n").takeLast(1000)
+                    screen.blocks.forEach { block ->
+                        addOption(block) {
+                            val selected = block.replace('\n', ' ')
+                            chooseConversation("Visible screen context (unlabeled):\n$context\nThem: $selected")
+                        }
+                    }
+                }
+                if (!imageText) addOption("Read image text") { showScreen(imageText = true) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                showStatus(failure.message ?: "Could not read the screen.")
+                addOption("Retry image text") { showScreen(imageText = true) }
             }
         }
     }

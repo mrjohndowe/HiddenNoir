@@ -17,7 +17,9 @@ For better instruction following in ordinary conversations and text reviews, use
 
 In HiddenNoir, tap **Enable keyboard**, turn on HiddenNoir Keyboard in Android settings, and use **Switch keyboard** to select it. The purple row shows the Studio’s active **Relationship**, **Tone**, and **Intensity**. Tap it to open **Direction** in the Studio. The choices highlighted in purple apply to both the Studio and keyboard.
 
-For Google Messages, tap **Read open thread** in HiddenNoir and enable **HiddenNoir Read Open Thread** in Android Accessibility. Open a thread, focus the compose field, and tap **Thread** on the keyboard. Review the captured messages before generating. The keyboard reads visible text bubbles only when you tap **Thread** and keeps them in memory while the keyboard is open.
+Tap **Read screen access** in HiddenNoir and enable **HiddenNoir Read Screen** in Android Accessibility. In the app where you want to reply, focus its compose field and tap **Screen** on the keyboard. Google Messages uses its visible conversation bubbles. In other apps, choose the visible text you want to answer, then review the captured context before generating.
+
+Use **Read image text** to recognize text inside screenshots, images, or screens that expose little readable text. This requires Android 11 or newer. Recognition runs on the phone with a bundled English/Latin-script model. Capture covers the current app above the keyboard. Screenshots stay in memory and are released after recognition. Protected screens can block capture. The local reply model receives the recognized text.
 
 **Messages** uses active notification previews if you enable **Message preview access**. **Copied** uses a copied message or transcript. **Selected** uses selected text in the compose field. Tap **Generate replies**, then tap a reply to insert it. Send it from your messaging app when ready. The imported GGUF runs locally while the Studio screen is closed.
 

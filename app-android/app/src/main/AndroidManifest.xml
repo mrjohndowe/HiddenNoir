@@ -1,4 +1,7 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
     <application
         android:allowBackup="false"
         android:icon="@drawable/hiddennoir_launcher"
@@ -28,7 +31,7 @@
         <service
             android:name=".ConversationAccess"
             android:exported="true"
-            android:label="HiddenNoir Read Open Thread"
+            android:label="HiddenNoir Read Screen"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

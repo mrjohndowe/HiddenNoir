@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="hiddennoir_conversation_access_description">Reads visible message bubbles in Google Messages only when you tap Thread in HiddenNoir Keyboard. The conversation stays on this device.</string>
+    <string name="hiddennoir_conversation_access_description">Reads visible text in the app you are typing in when you tap Screen. Read image text captures that app’s visible screen area and recognizes its text on this device. You choose the text to answer and review it before generating. Screenshots are kept in memory only.</string>
 </resources>
