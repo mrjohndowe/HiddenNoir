@@ -51,7 +51,7 @@ class ConversationAccess : AccessibilityService() {
                 } ?: return@mapNotNull null
                 val bounds = Rect().also(bubble::getBoundsInScreen)
                 if (!Rect.intersects(listBounds, bounds)) return@mapNotNull null
-                val outgoing = node.contentDescription?.startsWith("You", ignoreCase = true) == true ||
+                val outgoing = outgoingDescription.containsMatchIn(node.contentDescription?.toString().orEmpty()) ||
                     bounds.left - listBounds.left > listBounds.right - bounds.right
                 val speaker = if (outgoing) "You" else "Them"
                 bounds.top to "$speaker: ${node.text.toString().trim().replace('\n', ' ').take(400)}"
@@ -59,11 +59,17 @@ class ConversationAccess : AccessibilityService() {
             val newestIncoming = messages.indexOfLast { it.startsWith("Them: ") }
             if (newestIncoming < 0) return ThreadRead.Unavailable
             // Preserve the newest incoming message even after several outgoing replies.
-            return ThreadRead.Readable(messages.take(newestIncoming + 3).takeLast(12).joinToString("\n"))
+            val recent = messages.takeLast(12)
+            val context = if (newestIncoming < messages.size - recent.size) {
+                listOf(messages[newestIncoming]) + recent.drop(1)
+            } else recent
+            return ThreadRead.Readable(context.joinToString("\n"))
         }
 
         private fun AccessibilityNodeInfo.hasId(id: String): Boolean =
             viewIdResourceName?.substringAfterLast('/') == id
+
+        private val outgoingDescription = Regex("^You(?:\\s+(?:said|sent)|[:,.])", RegexOption.IGNORE_CASE)
 
         private fun AccessibilityNodeInfo.descendants(): Sequence<AccessibilityNodeInfo> = sequence {
             yield(this@descendants)
