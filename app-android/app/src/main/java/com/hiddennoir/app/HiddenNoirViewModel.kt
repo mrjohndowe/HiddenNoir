@@ -20,6 +20,7 @@ data class HiddenNoirUiState(
     val draft: Draft = Draft(),
     val review: TextReview = TextReview(),
     val model: String? = null,
+    val conversationModel: String? = null,
     val modelError: String? = null,
     val error: String? = null
 )
@@ -34,6 +35,7 @@ class HiddenNoirViewModel(application: Application) : AndroidViewModel(applicati
                 preferences.getString("text_review", null)?.let { Json.decodeFromString<TextReview>(it) } ?: TextReview()
             } catch (_: SerializationException) { TextReview() },
             model = if (localModel.isInstalled()) preferences.getString("model", "Local GGUF") else null,
+            conversationModel = if (localModel.hasConversationModel()) preferences.getString("conversation_model", "Conversation GGUF") else null,
             draft = try {
                 preferences.getString("draft", null)?.let { Json.decodeFromString<Draft>(it) } ?: Draft()
             } catch (_: SerializationException) {
@@ -81,15 +83,17 @@ class HiddenNoirViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun importModel(uri: Uri) {
+    fun importModel(uri: Uri, forConversation: Boolean = false) {
         val state = _uiState.value
         if (state.importing || state.loading) return
         _uiState.value = state.copy(importing = true, modelError = null, error = null)
         viewModelScope.launch {
             try {
-                val name = withContext(Dispatchers.IO) { localModel.import(uri) }
-                preferences.edit().putString("model", name).apply()
-                _uiState.value = _uiState.value.copy(model = name)
+                val name = withContext(Dispatchers.IO) { localModel.import(uri, forConversation) }
+                preferences.edit().putString(if (forConversation) "conversation_model" else "model", name).apply()
+                _uiState.value = if (forConversation) {
+                    _uiState.value.copy(conversationModel = name, model = _uiState.value.model ?: name)
+                } else _uiState.value.copy(model = name)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {

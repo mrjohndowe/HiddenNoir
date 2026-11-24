@@ -117,8 +117,9 @@ class MainActivity : ComponentActivity() {
         if (directionRequest > 0 && directionPlaced) directionCard.bringIntoView()
     }
     var adultConfirmed by remember(draft.conversation, draft.intensity) { mutableStateOf(false) }
+    var importingConversationModel by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.importModel(uri)
+        if (uri != null) viewModel.importModel(uri, importingConversationModel)
     }
     Column(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF160E22), Noir, Noir)))
@@ -173,10 +174,25 @@ class MainActivity : ComponentActivity() {
                         state.model == null -> "Import GGUF model"
                         else -> "Replace model"
                     },
-                    { picker.launch(arrayOf("*/*")) },
+                    {
+                        importingConversationModel = false
+                        picker.launch(arrayOf("*/*"))
+                    },
                     !state.importing && !state.loading
                 )
                 state.modelError?.let { Text(it, color = Color(0xFFFFB4AB)) }
+                Text(
+                    "Conversation model · ${state.conversationModel ?: "Uses the main model"}",
+                    color = Muted
+                )
+                Text("A separate instruct model handles ordinary conversations and text reviews. Explicit sexual exchanges use the main model.", color = Muted, fontSize = 14.sp)
+                TextButton(
+                    enabled = !state.importing && !state.loading,
+                    onClick = {
+                        importingConversationModel = true
+                        picker.launch(arrayOf("*/*"))
+                    }
+                ) { Text(if (state.conversationModel == null) "Import conversation model" else "Replace conversation model") }
             }
         }
         Card(colors = CardDefaults.cardColors(containerColor = SurfaceNoir), shape = Panel) {

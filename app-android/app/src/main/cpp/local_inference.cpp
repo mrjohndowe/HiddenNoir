@@ -39,7 +39,7 @@ auto load_model(const std::string & path) {
     return model;
 }
 
-std::string format_prompt(const llama_model * model, const std::string & prompt) {
+std::string format_prompt(const llama_model * model, const std::string & prompt, const std::string & system = "") {
     const char * chat_template = llama_model_chat_template(model, nullptr);
     if (!chat_template || !*chat_template) {
         // Some Llama 3 fine-tunes omit tokenizer.chat_template from their GGUF.
@@ -55,12 +55,14 @@ std::string format_prompt(const llama_model * model, const std::string & prompt)
             throw std::runtime_error("Choose an instruct GGUF model with an embedded chat template.");
         }
     }
-    const llama_chat_message message{"user", prompt.c_str()};
-    std::vector<char> buffer(prompt.size() + 1024);
-    int size = llama_chat_apply_template(chat_template, &message, 1, true, buffer.data(), buffer.size());
+    std::vector<llama_chat_message> messages;
+    if (!system.empty()) messages.push_back({"system", system.c_str()});
+    messages.push_back({"user", prompt.c_str()});
+    std::vector<char> buffer(prompt.size() + system.size() + 1024);
+    int size = llama_chat_apply_template(chat_template, messages.data(), messages.size(), true, buffer.data(), buffer.size());
     if (size > static_cast<int>(buffer.size())) {
         buffer.resize(size);
-        size = llama_chat_apply_template(chat_template, &message, 1, true, buffer.data(), buffer.size());
+        size = llama_chat_apply_template(chat_template, messages.data(), messages.size(), true, buffer.data(), buffer.size());
     }
     if (size <= 0 || size > static_cast<int>(buffer.size())) {
         throw std::runtime_error("This model's chat template is not supported. Try a Qwen2.5 Instruct GGUF.");
@@ -68,8 +70,8 @@ std::string format_prompt(const llama_model * model, const std::string & prompt)
     return {buffer.data(), static_cast<size_t>(size)};
 }
 
-std::string generate(const llama_model * model, const std::string & prompt, bool review) {
-    const auto formatted = format_prompt(model, prompt);
+std::string generate(const llama_model * model, const std::string & prompt, bool review, const std::string & system) {
+    const auto formatted = format_prompt(model, prompt, system);
     const auto * vocab = llama_model_get_vocab(model);
     auto params = llama_context_default_params();
     params.n_ctx = std::min(review ? 4096 : context_size, llama_model_n_ctx_train(model));
@@ -108,7 +110,7 @@ std::string generate(const llama_model * model, const std::string & prompt, bool
 
     // Use structured output so small instruct models can populate the existing reply cards.
     constexpr auto grammar = R"(
-root ::= "{" ws "\"replies\"" ws ":" ws "[" ws string (ws "," ws string){3} ws "]" ws "}"
+root ::= "{" ws "\"replies\"" ws ":" ws "[" ws string (ws "," ws string){0,3} ws "]" ws "}"
 ws ::= [ \t\n\r]{0,4}
 string ::= "\"" char{1,120} "\""
 char ::= [^"\\\x00-\x1F] | "\\" ["\\/bfnrt]
@@ -175,10 +177,10 @@ Java_com_hiddennoir_app_NativeInference_validate(JNIEnv * env, jobject, jbyteArr
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_hiddennoir_app_NativeInference_generate(JNIEnv * env, jobject, jbyteArray path, jbyteArray prompt, jboolean review) {
+Java_com_hiddennoir_app_NativeInference_generate(JNIEnv * env, jobject, jbyteArray path, jbyteArray prompt, jboolean review, jbyteArray system) {
     try {
         const auto model = load_model(read_bytes(env, path));
-        const auto output = generate(model.get(), read_bytes(env, prompt), review == JNI_TRUE);
+        const auto output = generate(model.get(), read_bytes(env, prompt), review == JNI_TRUE, read_bytes(env, system));
         const auto bytes = env->NewByteArray(static_cast<jsize>(output.size()));
         if (bytes) {
             env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(output.size()),

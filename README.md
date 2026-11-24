@@ -13,6 +13,8 @@ The APK supports Android 9 and newer on ARM64 and x86-64. Choose an unsplit text
 
 ## Reply from the keyboard
 
+For better instruction following in ordinary conversations and text reviews, use **Import conversation model** in the Studio to add a separate instruct GGUF. A tested option is [Qwen2.5-3B-Instruct Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF). Ordinary replies and reviews use this model when installed. Explicit exchanges with sexual language use the main model. Both models run on the phone.
+
 In HiddenNoir, tap **Enable keyboard**, turn on HiddenNoir Keyboard in Android settings, and use **Switch keyboard** to select it. The purple row shows the Studio’s active **Relationship**, **Tone**, and **Intensity**. Tap it to open **Direction** in the Studio. The choices highlighted in purple apply to both the Studio and keyboard.
 
 For Google Messages, tap **Read open thread** in HiddenNoir and enable **HiddenNoir Read Open Thread** in Android Accessibility. Open a thread, focus the compose field, and tap **Thread** on the keyboard. Review the captured messages before generating. The keyboard reads visible text bubbles only when you tap **Thread** and keeps them in memory while the keyboard is open.
