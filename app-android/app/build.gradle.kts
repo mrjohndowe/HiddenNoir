@@ -13,8 +13,8 @@ android {
         applicationId = "com.hiddennoir.app"
         minSdk = 28
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.4.0-dev"
+        versionCode = 5
+        versionName = "0.4.1-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }

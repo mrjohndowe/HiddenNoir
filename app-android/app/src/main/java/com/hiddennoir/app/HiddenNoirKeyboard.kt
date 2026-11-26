@@ -198,13 +198,36 @@ class HiddenNoirKeyboard : InputMethodService() {
         val settings = readDirection()
         updateDirection(settings)
         val input = settings.copy(conversation = text.trim().takeLast(1600), replies = emptyList())
-        showStatus("Review the conversation below before generating.")
+        showStatus(
+            if (input.intensity == Intensity.EXPLICIT) "Confirm everyone represented is 18 or older, then generate."
+            else "Review the conversation below before generating."
+        )
+        renderConversation(input)
+    }
+
+    // Explicit replies stay unavailable until the adult confirmation is on.
+    private fun renderConversation(input: Draft) {
+        clearOptions()
         val explicit = input.intensity == Intensity.EXPLICIT
-        addOption(if (explicit) "Everyone is 18+ · Generate replies" else "Generate replies") {
-            generate(input, explicit)
+        if (explicit) {
+            val confirmed = preferences.getBoolean("adult_confirmed", false)
+            addOption(if (confirmed) "Everyone is 18+ · Confirmed" else "Everyone is 18+ · Tap to confirm") {
+                preferences.edit().putBoolean("adult_confirmed", !confirmed).apply()
+                showStatus(if (confirmed) "Adult confirmation turned off." else "Adult confirmation saved.")
+                renderConversation(input)
+            }
+            if (!confirmed) {
+                addConversationPreview(input)
+                return
+            }
         }
+        addOption("Generate replies") { generate(input, explicit) }
+        addConversationPreview(input)
+    }
+
+    private fun addConversationPreview(input: Draft) {
         panel?.addView(TextView(this).apply {
-            this.text = input.conversation
+            text = input.conversation
             setTextColor(NoirPalette.lavender)
             setPadding(dp(8), dp(4), dp(8), dp(8))
             textSize = 14f
@@ -226,7 +249,8 @@ class HiddenNoirKeyboard : InputMethodService() {
     private fun generate(input: Draft, adultsConfirmed: Boolean) {
         val connection = currentInputConnection ?: return
         if (!allowsReplies(currentInputEditorInfo) || generation?.isActive == true) return
-        if (!preferences.getBoolean("adult_gate", false) || !model.isInstalled()) {
+        if (!preferences.getBoolean("adult_gate", false) || !model.isInstalled() ||
+            (input.intensity == Intensity.EXPLICIT && !preferences.getBoolean("adult_confirmed", false))) {
             showStatus("Open HiddenNoir, confirm your age, and import a GGUF model first.")
             return
         }

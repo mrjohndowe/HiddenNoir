@@ -36,6 +36,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private val Noir = Color(NoirPalette.background)
@@ -109,6 +111,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable private fun Studio(viewModel: HiddenNoirViewModel, directionRequest: Int) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshAdultConfirmation() }
     val context = androidx.compose.ui.platform.LocalContext.current
     val draft = state.draft
     val directionCard = remember { BringIntoViewRequester() }
@@ -116,7 +119,6 @@ class MainActivity : ComponentActivity() {
     LaunchedEffect(directionRequest, directionPlaced) {
         if (directionRequest > 0 && directionPlaced) directionCard.bringIntoView()
     }
-    var adultConfirmed by remember(draft.conversation, draft.intensity) { mutableStateOf(false) }
     var importingConversationModel by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importModel(uri, importingConversationModel)
@@ -219,12 +221,12 @@ class MainActivity : ComponentActivity() {
                 ChoiceGroup("Intensity", Intensity.entries, draft.intensity, { it.label }) { viewModel.updateDraft(draft.copy(intensity = it)) }
             }
         }
-        if (draft.intensity == Intensity.EXPLICIT) AdultConfirm(adultConfirmed) { adultConfirmed = !adultConfirmed }
+        if (draft.intensity == Intensity.EXPLICIT) AdultConfirm(state.adultConfirmed) { viewModel.setAdultConfirmed(!state.adultConfirmed) }
         PrimaryButton(
             if (state.loading) "Finding your next line…" else "Generate replies",
-            { viewModel.generate(adultConfirmed) },
+            viewModel::generate,
             !state.loading && !state.importing && state.model != null && draft.conversation.isNotBlank() &&
-                (draft.intensity != Intensity.EXPLICIT || adultConfirmed)
+                (draft.intensity != Intensity.EXPLICIT || state.adultConfirmed)
         )
         state.error?.let { Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF3B2027)), shape = Panel) { Text(it, color = Color(0xFFFFB4AB), modifier = Modifier.padding(18.dp)) } }
         if (draft.replies.isNotEmpty()) Section("YOUR OPTIONS")
@@ -286,7 +288,7 @@ class MainActivity : ComponentActivity() {
 @Composable private fun AdultConfirm(confirmed: Boolean, onClick: () -> Unit) = Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2A1733)), border = BorderStroke(1.dp, Color(0xFF714381)), shape = Panel) {
     Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF512A62)), contentAlignment = Alignment.Center) { Text("18+", color = Lavender, fontWeight = FontWeight.Bold, fontSize = 12.sp) }; Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) { Text("Adult confirmation", fontWeight = FontWeight.SemiBold); Text("Everyone represented is 18 or older.", color = Muted, fontSize = 13.sp) }
+        Column(Modifier.weight(1f)) { Text("Adult confirmation", fontWeight = FontWeight.SemiBold); Text(if (confirmed) "Everyone represented is 18 or older. Saved until you turn it off." else "Everyone represented is 18 or older.", color = Muted, fontSize = 13.sp) }
         Text(if (confirmed) "CONFIRMED" else "CONFIRM", color = if (confirmed) Lavender else Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (confirmed) Color(0xFF55306C) else Color(0xFF3B3144)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp))
     }
 }

@@ -130,7 +130,7 @@ char ::= [^"\\\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
     llama_sampler_chain_add(sampler.get(), constraint);
     llama_sampler_chain_add(sampler.get(), llama_sampler_init_top_k(40));
     llama_sampler_chain_add(sampler.get(), llama_sampler_init_top_p(0.92f, 1));
-    llama_sampler_chain_add(sampler.get(), llama_sampler_init_temp(0.8f));
+    llama_sampler_chain_add(sampler.get(), llama_sampler_init_temp(review ? 0.25f : 0.8f));
     llama_sampler_chain_add(sampler.get(), llama_sampler_init_dist(LLAMA_DEFAULT_SEED));
 
     std::string output;

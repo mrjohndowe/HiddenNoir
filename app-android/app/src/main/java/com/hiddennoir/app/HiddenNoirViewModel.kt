@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 
 data class HiddenNoirUiState(
     val adultGateAccepted: Boolean = false,
+    val adultConfirmed: Boolean = false,
     val importing: Boolean = false,
     val loading: Boolean = false,
     val draft: Draft = Draft(),
@@ -31,6 +32,7 @@ class HiddenNoirViewModel(application: Application) : AndroidViewModel(applicati
     private val _uiState = MutableStateFlow(
         HiddenNoirUiState(
             adultGateAccepted = preferences.getBoolean("adult_gate", false),
+            adultConfirmed = preferences.getBoolean("adult_confirmed", false),
             review = try {
                 preferences.getString("text_review", null)?.let { Json.decodeFromString<TextReview>(it) } ?: TextReview()
             } catch (_: SerializationException) { TextReview() },
@@ -48,6 +50,19 @@ class HiddenNoirViewModel(application: Application) : AndroidViewModel(applicati
     fun acceptAdultGate() {
         preferences.edit().putBoolean("adult_gate", true).apply()
         _uiState.value = _uiState.value.copy(adultGateAccepted = true)
+    }
+
+    fun setAdultConfirmed(confirmed: Boolean) {
+        preferences.edit().putBoolean("adult_confirmed", confirmed).apply()
+        _uiState.value = _uiState.value.copy(adultConfirmed = confirmed, error = null)
+    }
+
+    // The keyboard writes the same preference, so re-read it when the app returns.
+    fun refreshAdultConfirmation() {
+        val confirmed = preferences.getBoolean("adult_confirmed", false)
+        if (confirmed != _uiState.value.adultConfirmed) {
+            _uiState.value = _uiState.value.copy(adultConfirmed = confirmed)
+        }
     }
 
     fun updateDraft(draft: Draft) {
@@ -106,13 +121,17 @@ class HiddenNoirViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun generate(adultConfirmed: Boolean) {
+    fun generate() {
         val state = _uiState.value
         if (state.loading || state.importing || state.model == null || !state.adultGateAccepted) return
+        if (state.draft.intensity == Intensity.EXPLICIT && !state.adultConfirmed) {
+            showError("Confirm everyone represented is 18 or older.")
+            return
+        }
         _uiState.value = state.copy(loading = true, error = null)
         viewModelScope.launch {
             try {
-                val replies = withContext(Dispatchers.Default) { localModel.generate(state.draft, adultConfirmed) }
+                val replies = withContext(Dispatchers.Default) { localModel.generate(state.draft, state.adultConfirmed) }
                 if (_uiState.value.draft == state.draft) saveDraft(state.draft.copy(replies = replies))
             } catch (cancelled: CancellationException) {
                 throw cancelled
